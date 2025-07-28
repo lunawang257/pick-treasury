@@ -38,14 +38,15 @@ def is_third_friday(date_str: str) -> bool:
 
 def load_and_filter_data(csv_file: str) -> List[Dict]:
     """
-    Load CSV data and filter for 3rd Friday of each month with specified treasury periods.
-    Only use data range where 1-month rates are available.
+    Load CSV data and filter for 3rd Friday of each month with specified
+    treasury periods. Only use data range where 1-month rates are available.
 
     Args:
         csv_file: Path to the CSV file
 
     Returns:
-        List[Dict]: Filtered data with only 3rd Friday data and specified periods
+        List[Dict]: Filtered data with only 3rd Friday data and specified
+        periods
     """
     filtered_data = []
 
@@ -101,7 +102,9 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
         data_point = filtered_data[i]
 
         # Check if this data point has all required periods
-        has_all_data = all(data_point[period] is not None for period in TREASURY_PERIODS)
+        has_all_data = all(
+            data_point[period] is not None for period in TREASURY_PERIODS
+        )
 
         if has_all_data:
             # Continue the current range
@@ -115,7 +118,10 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
             # Look for next valid starting point
             current_start = None
             for j in range(i + 1, len(filtered_data)):
-                if all(filtered_data[j][period] is not None for period in TREASURY_PERIODS):
+                if all(
+                    filtered_data[j][period] is not None
+                    for period in TREASURY_PERIODS
+                ):
                     current_start = j
                     break
             if current_start is None:
@@ -128,8 +134,14 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
         best_end = current_end
 
     if best_start is not None and best_end is not None:
-        print(f"Using complete data range: {filtered_data[best_start]['Date'].strftime('%Y-%m-%d')} to {filtered_data[best_end]['Date'].strftime('%Y-%m-%d')}")
-        print(f"Total months with complete data: {best_end - best_start + 1}")
+        start_date = filtered_data[best_start]['Date'].strftime('%Y-%m-%d')
+        end_date = filtered_data[best_end]['Date'].strftime('%Y-%m-%d')
+        print(
+            f"Using complete data range: {start_date} to {end_date}"
+        )
+        print(
+            f"Total months with complete data: {best_end - best_start + 1}"
+        )
         return filtered_data[best_start:best_end + 1]
     else:
         print("Warning: No complete data range found!")
@@ -139,7 +151,8 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
               pick_threshold: float, rate_slippage: float = RATE_SLIPPAGE,
               initial_amount: float = 1000000.0) -> Dict:
     """
-    Compare two money borrowing strategies using compound interest simulation.
+    Compare two money borrowing strategies using compound interest
+    simulation.
 
     Args:
         data: List of dictionaries with treasury yield data
@@ -150,16 +163,22 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
         initial_amount: Initial amount to borrow (default $1M)
 
     Returns:
-        Dict: Results including compound interest cost, detailed borrowing history, and performance metrics
+        Dict: Results including compound interest cost, detailed borrowing
+        history, and performance metrics
     """
     if short_term not in TREASURY_PERIODS or long_term not in TREASURY_PERIODS:
-        raise ValueError(f"Invalid treasury periods. Must be one of {TREASURY_PERIODS}")
+        raise ValueError(
+            f"Invalid treasury periods. Must be one of {TREASURY_PERIODS}"
+        )
 
     # Validate that short_term is actually shorter than long_term
     short_idx = TREASURY_PERIODS.index(short_term)
     long_idx = TREASURY_PERIODS.index(long_term)
     if short_idx >= long_idx:
-        raise ValueError(f"short_term ({short_term}) must be shorter than long_term ({long_term})")
+        raise ValueError(
+            f"short_term ({short_term}) must be shorter than "
+            f"long_term ({long_term})"
+        )
 
     # Define borrowing durations in months for each period
     duration_months = {
@@ -195,12 +214,19 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
 
         # Report and skip if we don't have valid rates
         if short_rate is None or long_rate is None:
-            print(f"Warning: Missing data on {current_date.strftime('%Y-%m-%d')} - {short_term}: {short_rate}, {long_term}: {long_rate}")
+            print(
+                f"Warning: Missing data on {current_date.strftime('%Y-%m-%d')}"
+                f" - {short_term}: {short_rate}, {long_term}: {long_rate}"
+            )
             i += 1
             continue
 
         if short_rate > 50 or long_rate > 50:
-            print(f"Warning: Suspiciously high rates on {current_date.strftime('%Y-%m-%d')} - {short_term}: {short_rate}, {long_term}: {long_rate}")
+            print(
+                f"Warning: Suspiciously high rates on "
+                f"{current_date.strftime('%Y-%m-%d')} - "
+                f"{short_term}: {short_rate}, {long_term}: {long_rate}"
+            )
 
         # Calculate the rate ratio
         rate_ratio = long_rate / short_rate if short_rate > 0 else float('inf')
@@ -221,7 +247,9 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
         # Calculate interest for this borrowing period
         # Convert annual rate to monthly rate, then compound for the duration
         monthly_rate = actual_rate / 12 / 100
-        period_interest = current_amount * monthly_rate * duration  # Interest is prepaid
+        period_interest = (
+            current_amount * monthly_rate * duration  # Prepaid
+        )
 
         # Update compound interest simulation
         total_interest_paid += period_interest
@@ -275,7 +303,8 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
         end_date = borrowing_history[-1]['borrow_date']
         total_years = (end_date - start_date).days / 365.25
         if total_years > 0:
-            results['annualized_compound_interest_cost'] = total_interest_paid / total_years
+            results['annualized_compound_interest_cost'] = (
+                total_interest_paid / total_years)
         else:
             results['annualized_compound_interest_cost'] = total_interest_paid
     else:
@@ -286,17 +315,25 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
 
     # Calculate additional metrics
     if results['rates_used']:
-        results['avg_rate'] = sum(results['rates_used']) / len(results['rates_used'])
+        results['avg_rate'] = (
+            sum(results['rates_used']) / len(results['rates_used'])
+        )
     else:
         results['avg_rate'] = 0.0
 
     results['total_periods'] = len(results['decisions'])
-    results['long_term_choices'] = sum(1 for d in results['decisions'] if d['strategy'] == long_term)
-    results['short_term_choices'] = sum(1 for d in results['decisions'] if d['strategy'] == short_term)
+    results['long_term_choices'] = sum(
+        1 for d in results['decisions'] if d['strategy'] == long_term
+    )
+    results['short_term_choices'] = sum(
+        1 for d in results['decisions'] if d['strategy'] == short_term
+    )
 
     return results
 
-def backtest_strategies(data: List[Dict], pick_thresholds: List[float] = None) -> Dict:
+def backtest_strategies(
+    data: List[Dict], pick_thresholds: List[float] = None
+) -> Dict:
     """
     Backtest different treasury selection strategies.
 
@@ -316,7 +353,9 @@ def backtest_strategies(data: List[Dict], pick_thresholds: List[float] = None) -
     for i, short_term in enumerate(TREASURY_PERIODS[:-1]):
         for long_term in TREASURY_PERIODS[i+1:]:
             for threshold in pick_thresholds:
-                strategy_name = f"{short_term}_vs_{long_term}_thresh_{threshold}"
+                strategy_name = (
+                    f"{short_term}_vs_{long_term}_thresh_{threshold}"
+                )
 
                 try:
                     result = CmpBorrow(data, short_term, long_term, threshold)
@@ -329,7 +368,11 @@ def backtest_strategies(data: List[Dict], pick_thresholds: List[float] = None) -
                         'total_periods': result['total_periods'],
                         'long_term_choices': result['long_term_choices'],
                         'short_term_choices': result['short_term_choices'],
-                        'long_term_pct': result['long_term_choices'] / result['total_periods'] * 100 if result['total_periods'] > 0 else 0
+                        'long_term_pct': (
+                            result['long_term_choices'] /
+                            result['total_periods'] * 100
+                            if result['total_periods'] > 0 else 0
+                        )
                     }
                 except Exception as e:
                     print(f"Error testing {strategy_name}: {e}")
@@ -367,17 +410,27 @@ def print_results(results: Dict, top_n: int = 10):
     # Sort by compound interest cost (lower is better)
     sorted_results = sorted(results.items(), key=lambda x: x[1]['total_cost'])
 
-    print(f"\nTop {min(top_n, len(sorted_results))} Strategies (by annualized compound interest cost)" + \
-          f" out of {len(sorted_results)} total strategies:")
+    print(
+        f"\nTop {min(top_n, len(sorted_results))} Strategies "
+        f"(by annualized compound interest cost) "
+        f"out of {len(sorted_results)} total strategies:"
+    )
     print("-" * 110)
-    print(f"{'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} {'Final Amount':<15} {'Avg Rate':<10} {'Long%':<8}")
+    print(
+        f"{'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
+        f"{'Final Amount':<15} {'Avg Rate':<10} {'Long%':<8}"
+    )
     print("-" * 110)
 
     for i, (strategy_name, data) in enumerate(sorted_results[:top_n]):
         annualized_cost = data['total_cost']
         total_interest = data.get('compound_interest_cost', 0)
         final_amount = data.get('final_amount', 0)
-        print(f"{i}: {strategy_name:<40} ${annualized_cost:<14,.0f} ${total_interest:<14,.0f} ${final_amount:<14,.0f} {data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}")
+        print(
+            f"{i}: {strategy_name:<40} ${annualized_cost:<14,.0f} "
+            f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
+            f"{data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}"
+        )
 
 def print_borrowing_history(result: Dict, max_records: int = 10):
     """
@@ -391,9 +444,15 @@ def print_borrowing_history(result: Dict, max_records: int = 10):
         print("No borrowing history available.")
         return
 
-    print(f"\nDetailed Borrowing History (showing first {max_records} records):")
+    print(
+        f"\nDetailed Borrowing History "
+        f"(showing first {max_records} records):"
+    )
     print("-" * 120)
-    print("Date         Strategy  Rate%  Duration  Principal    Interest      New Principal")
+    print(
+        "Date         Strategy  Rate%  Duration  Principal    "
+        "Interest      New Principal"
+    )
     print("-" * 120)
 
     for record in result['borrowing_history'][:max_records]:
@@ -405,7 +464,10 @@ def print_borrowing_history(result: Dict, max_records: int = 10):
         interest = f"${record['interest_paid']:,.0f}"
         new_principal = f"${record['principal_at_end']:,.0f}"
 
-        row_str = f"{date_str:<12} {strategy:<8} {rate:<6.2f} {duration:<9} {principal:<12} {interest:<12} {new_principal:<15}"
+        row_str = (
+            f"{date_str:<12} {strategy:<8} {rate:<6.2f} {duration:<9} "
+            f"{principal:<12} {interest:<12} {new_principal:<15}"
+        )
         print(row_str)
 
     if len(result['borrowing_history']) > max_records:
@@ -434,11 +496,21 @@ def main():
             print("-" * 50)
             for i, row in enumerate(data[:5]):
                 date_str = row['Date'].strftime('%Y-%m-%d')
-                mo1 = f"{row['1 Mo']:.2f}" if row['1 Mo'] is not None else "N/A"
-                mo3 = f"{row['3 Mo']:.2f}" if row['3 Mo'] is not None else "N/A"
-                mo6 = f"{row['6 Mo']:.2f}" if row['6 Mo'] is not None else "N/A"
-                yr1 = f"{row['1 Yr']:.2f}" if row['1 Yr'] is not None else "N/A"
-                yr2 = f"{row['2 Yr']:.2f}" if row['2 Yr'] is not None else "N/A"
+                mo1 = (
+                    f"{row['1 Mo']:.2f}" if row['1 Mo'] is not None else "N/A"
+                )
+                mo3 = (
+                    f"{row['3 Mo']:.2f}" if row['3 Mo'] is not None else "N/A"
+                )
+                mo6 = (
+                    f"{row['6 Mo']:.2f}" if row['6 Mo'] is not None else "N/A"
+                )
+                yr1 = (
+                    f"{row['1 Yr']:.2f}" if row['1 Yr'] is not None else "N/A"
+                )
+                yr2 = (
+                    f"{row['2 Yr']:.2f}" if row['2 Yr'] is not None else "N/A"
+                )
                 print(f"{date_str}\t{mo1}\t{mo3}\t{mo6}\t{yr1}\t{yr2}")
         else:
             print("No data found!")
@@ -460,16 +532,35 @@ def main():
         print(f"Short Term: {best_strategy_data['short_term']}")
         print(f"Long Term: {best_strategy_data['long_term']}")
         print(f"Pick Threshold: {best_strategy_data['pick_threshold']}")
-        print(f"Annualized Interest Cost: ${best_strategy_data['total_cost']:,.0f}")
-        print(f"Total Interest Paid: ${best_strategy_data.get('compound_interest_cost', 0):,.0f}")
-        print(f"Final Amount: ${best_strategy_data.get('final_amount', 0):,.0f}")
+        print(
+            f"Annualized Interest Cost: "
+            f"${best_strategy_data['total_cost']:,.0f}"
+        )
+        print(
+            f"Total Interest Paid: "
+            f"${best_strategy_data.get('compound_interest_cost', 0):,.0f}"
+        )
+        print(
+            f"Final Amount: "
+            f"${best_strategy_data.get('final_amount', 0):,.0f}"
+        )
         print(f"Average Rate: {best_strategy_data['avg_rate']:.2f}%")
-        print(f"Long Term Choices: {best_strategy_data['long_term_choices']} ({best_strategy_data['long_term_pct']:.1f}%)")
-        print(f"Short Term Choices: {best_strategy_data['short_term_choices']} ({100-best_strategy_data['long_term_pct']:.1f}%)")
+        print(
+            f"Long Term Choices: {best_strategy_data['long_term_choices']} "
+            f"({best_strategy_data['long_term_pct']:.1f}%)"
+        )
+        print(
+            f"Short Term Choices: {best_strategy_data['short_term_choices']} "
+            f"({100-best_strategy_data['long_term_pct']:.1f}%)"
+        )
 
         # Show detailed borrowing history for the best strategy
         try:
-            best_result = CmpBorrow(data, best_strategy_data['short_term'], best_strategy_data['long_term'], best_strategy_data['pick_threshold'])
+            best_result = CmpBorrow(
+                data, best_strategy_data['short_term'],
+                best_strategy_data['long_term'],
+                best_strategy_data['pick_threshold']
+            )
             print_borrowing_history(best_result, max_records=10)
         except Exception as e:
             print(f"Could not display borrowing history: {e}")
@@ -485,10 +576,16 @@ def main():
     for threshold in [0.0, 0.1, 0.2, 0.3, 0.5]:
         try:
             result = CmpBorrow(data, '1 Mo', '3 Mo', threshold)
-            print(f"Threshold {threshold}: Annualized Cost = ${result['total_cost']:,.0f}, "
-                  f"Total Interest = ${result.get('compound_interest_cost', 0):,.0f}, "
-                  f"Avg Rate = {result['avg_rate']:.2f}%, "
-                  f"Long Term % = {result['long_term_choices']/result['total_periods']*100:.1f}%")
+            long_term_pct = result['long_term_choices'] / \
+                result['total_periods'] * 100
+            print(
+                f"Threshold {threshold}: Annualized Cost = "
+                f"${result['total_cost']:,.0f}, "
+                f"Total Interest = "
+                f"${result.get('compound_interest_cost', 0):,.0f}, "
+                f"Avg Rate = {result['avg_rate']:.2f}%, "
+                f"Long Term % = {long_term_pct:.1f}%"
+            )
         except Exception as e:
             print(f"Error with threshold {threshold}: {e}")
 
