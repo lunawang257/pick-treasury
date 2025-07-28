@@ -231,40 +231,28 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
                 f"{short_term}: {short_rate}, {long_term}: {long_rate}"
             )
 
-        # Calculate the rate ratio
-        rate_ratio = long_rate / short_rate if short_rate > 0 else float('inf')
-
         # Determine strategy decision based on pick_method
         if pick_method == "pick_high":
             # Always use the higher rate
-            if long_rate > short_rate:
-                strategy = long_term
-                chosen_rate = long_rate
-                duration = duration_months[long_term]
-            else:
-                strategy = short_term
-                chosen_rate = short_rate
-                duration = duration_months[short_term]
+            use_long_term = long_rate > short_rate
         elif pick_method == "pick_low":
             # Always use the lower rate
-            if long_rate < short_rate:
-                strategy = long_term
-                chosen_rate = long_rate
-                duration = duration_months[long_term]
-            else:
-                strategy = short_term
-                chosen_rate = short_rate
-                duration = duration_months[short_term]
+            use_long_term = long_rate < short_rate
         else:  # use_threshold
-            # Use the original threshold-based strategy
-            if rate_ratio > (1 + pick_threshold):
-                strategy = long_term
-                chosen_rate = long_rate
-                duration = duration_months[long_term]
+            if short_rate == 0:
+                use_long_term = True
             else:
-                strategy = short_term
-                chosen_rate = short_rate
-                duration = duration_months[short_term]
+                # Use the original threshold-based strategy
+                use_long_term = long_rate / short_rate > (1 + pick_threshold)
+
+        if use_long_term:
+            strategy = long_term
+            chosen_rate = long_rate
+            duration = duration_months[long_term]
+        else:
+            strategy = short_term
+            chosen_rate = short_rate
+            duration = duration_months[short_term]
 
         # Add rate slippage to get actual borrowing cost
         actual_rate = chosen_rate + rate_slippage
@@ -290,7 +278,6 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
             'principal_at_start': current_amount - period_interest,
             'interest_paid': period_interest,
             'principal_at_end': current_amount,
-            'rate_ratio': rate_ratio,
             'short_rate': short_rate,
             'long_rate': long_rate
         }
@@ -301,7 +288,6 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
             'date': current_date,
             'short_rate': short_rate,
             'long_rate': long_rate,
-            'rate_ratio': rate_ratio,
             'strategy': strategy,
             'actual_rate': actual_rate,
             'period_cost': period_interest,
