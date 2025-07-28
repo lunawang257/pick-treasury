@@ -1,4 +1,5 @@
 import csv
+import argparse
 from datetime import datetime, timedelta
 import calendar
 from typing import Tuple, List, Dict
@@ -502,13 +503,16 @@ def print_results(results: Dict, top_n: int = 10):
             f"{data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}"
         )
 
-def print_borrowing_history(result: Dict, max_records: int = 10):
+def print_borrowing_history(result: Dict, max_records: int = 10,
+                            output_file: str = None):
     """
-    Print detailed borrowing history for a strategy.
+    Print detailed borrowing history for a strategy and optionally write
+    to file.
 
     Args:
         result: Results from CmpBorrow function
         max_records: Maximum number of records to display
+        output_file: Optional file path to write tab-delimited history
     """
     if not result.get('borrowing_history'):
         print("No borrowing history available.")
@@ -525,6 +529,8 @@ def print_borrowing_history(result: Dict, max_records: int = 10):
     )
     print("-" * 120)
 
+    # Prepare data for both console output and file writing
+    history_data = []
     for record in result['borrowing_history'][:max_records]:
         date_str = record['borrow_date'].strftime('%Y-%m-%d')
         strategy = record['strategy']
@@ -540,9 +546,49 @@ def print_borrowing_history(result: Dict, max_records: int = 10):
         )
         print(row_str)
 
+        # Store data for file writing
+        history_data.append({
+            'Date': date_str,
+            'Strategy': strategy,
+            'Rate': f"{rate:.2f}",
+            'Duration': f"{record['duration_months']}mo",
+            'Principal': f"{record['principal_at_start']:,.0f}",
+            'Interest': f"{record['interest_paid']:,.0f}",
+            'New_Principal': f"{record['principal_at_end']:,.0f}"
+        })
+
     if len(result['borrowing_history']) > max_records:
         remaining = len(result['borrowing_history']) - max_records
         print(f"... and {remaining} more records")
+
+    # Write to file if specified
+    if output_file:
+        try:
+            with open(output_file, 'w', newline='') as file:
+                if history_data:
+                    # Write header
+                    fieldnames = ['Date', 'Strategy', 'Rate', 'Duration',
+                                 'Principal', 'Interest', 'New_Principal']
+                    writer = csv.DictWriter(file, fieldnames=fieldnames,
+                                            delimiter='\t')
+                    writer.writeheader()
+
+                    # Write all records
+                    for record in result['borrowing_history']:
+                        date_str = record['borrow_date'].strftime('%Y-%m-%d')
+                        writer.writerow({
+                            'Date': date_str,
+                            'Strategy': record['strategy'],
+                            'Rate': f"{record['actual_rate']:.2f}",
+                            'Duration': f"{record['duration_months']}mo",
+                            'Principal': f"{record['principal_at_start']:,.0f}",
+                            'Interest': f"{record['interest_paid']:,.0f}",
+                            'New_Principal':
+                                 f"{record['principal_at_end']:,.0f}"
+                        })
+            print(f"\nBorrowing history written to: {output_file}")
+        except Exception as e:
+            print(f"Error writing to file {output_file}: {e}")
 
 def print_strategy_summary(result: Dict, strategy_name: str = ""):
     """
@@ -588,6 +634,17 @@ def main():
     """
     Main function to run the treasury backtesting analysis.
     """
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='Treasury Bill Selection Strategy Backtester'
+    )
+    parser.add_argument(
+        '--output-file', '-o',
+        default='borrow_history.txt',
+        help='Output file for borrowing history (default: borrow_history.txt)'
+    )
+    args = parser.parse_args()
+
     print("Treasury Bill Selection Strategy Backtester")
     print("=" * 50)
 
@@ -675,7 +732,8 @@ def main():
                 best_strategy_data.get('pick_method', 'use_threshold')
             )
             if best_result:
-                print_borrowing_history(best_result, max_records=10)
+                print_borrowing_history(best_result, max_records=10,
+                                        output_file=args.output_file)
         except Exception as e:
             print(f"Could not display borrowing history: {e}")
 
