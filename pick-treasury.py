@@ -367,7 +367,8 @@ def print_results(results: Dict, top_n: int = 10):
     # Sort by compound interest cost (lower is better)
     sorted_results = sorted(results.items(), key=lambda x: x[1]['total_cost'])
 
-    print(f"\nTop {min(top_n, len(sorted_results))} Strategies (by annualized compound interest cost):")
+    print(f"\nTop {min(top_n, len(sorted_results))} Strategies (by annualized compound interest cost)" + \
+          f" out of {len(sorted_results)} total strategies:")
     print("-" * 110)
     print(f"{'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} {'Final Amount':<15} {'Avg Rate':<10} {'Long%':<8}")
     print("-" * 110)
@@ -376,7 +377,7 @@ def print_results(results: Dict, top_n: int = 10):
         annualized_cost = data['total_cost']
         total_interest = data.get('compound_interest_cost', 0)
         final_amount = data.get('final_amount', 0)
-        print(f"{strategy_name:<40} ${annualized_cost:<14,.0f} ${total_interest:<14,.0f} ${final_amount:<14,.0f} {data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}")
+        print(f"{i}: {strategy_name:<40} ${annualized_cost:<14,.0f} ${total_interest:<14,.0f} ${final_amount:<14,.0f} {data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}")
 
 def print_borrowing_history(result: Dict, max_records: int = 10):
     """
@@ -474,7 +475,7 @@ def main():
             print(f"Could not display borrowing history: {e}")
 
     # Print top strategies
-    print_results(results, top_n=15)
+    print_results(results, top_n=60)
 
     # Example of specific strategy comparison
     print("\n" + "=" * 50)
