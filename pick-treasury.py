@@ -356,6 +356,84 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
 
     return results
 
+def create_strategy_result(result: Dict, short_term: str, long_term: str,
+                         pick_threshold: float, pick_method: str) -> Dict:
+    """
+    Create a standardized result dictionary for a strategy.
+
+    Args:
+        result: Result from CmpBorrow function
+        short_term: Short term treasury period
+        long_term: Long term treasury period
+        pick_threshold: Threshold used
+        pick_method: Method used for picking rates
+
+    Returns:
+        Dict: Standardized result dictionary
+    """
+    return {
+        'short_term': short_term,
+        'long_term': long_term,
+        'pick_threshold': pick_threshold,
+        'pick_method': pick_method,
+        'total_cost': result['total_cost'],
+        'avg_rate': result['avg_rate'],
+        'total_periods': result['total_periods'],
+        'long_term_choices': result['long_term_choices'],
+        'short_term_choices': result['short_term_choices'],
+        'long_term_pct': (
+            result['long_term_choices'] / result['total_periods'] * 100
+            if result['total_periods'] > 0 else 0
+        )
+    }
+
+def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
+                              pick_method: str,
+                              pick_thresholds: List[float]) -> Dict:
+    """
+    Test a specific combination of short and long terms with a pick method.
+
+    Args:
+        data: Treasury yield data
+        short_term: Short term period
+        long_term: Long term period
+        pick_method: Pick method to test
+        pick_thresholds: List of thresholds to test
+
+    Returns:
+        Dict: Results for this combination
+    """
+    results = {}
+
+    if pick_method == "use_threshold":
+        # For use_threshold, test all threshold values
+        for threshold in pick_thresholds:
+            strategy_name = (
+                f"{short_term}_vs_{long_term}_{pick_method}_{threshold}"
+            )
+
+            try:
+                result = CmpBorrow(
+                    data, short_term, long_term, threshold,
+                    pick_method=pick_method)
+                results[strategy_name] = create_strategy_result(
+                    result, short_term, long_term, threshold, pick_method)
+            except Exception as e:
+                print(f"Error testing {strategy_name}: {e}")
+    else:
+        # For pick_high and pick_low, threshold doesn't matter
+        strategy_name = f"{short_term}_vs_{long_term}_{pick_method}"
+
+        try:
+            result = CmpBorrow(data, short_term, long_term, 0.0,
+                               pick_method=pick_method)
+            results[strategy_name] = create_strategy_result(
+                result, short_term, long_term, 0.0, pick_method)
+        except Exception as e:
+            print(f"Error testing {strategy_name}: {e}")
+
+    return results
+
 def backtest_strategies(
     data: List[Dict], pick_thresholds: List[float] = None
 ) -> Dict:
@@ -379,65 +457,9 @@ def backtest_strategies(
     for i, short_term in enumerate(TREASURY_PERIODS[:-1]):
         for long_term in TREASURY_PERIODS[i+1:]:
             for pick_method in pick_methods:
-                if pick_method == "use_threshold":
-                    # For use_threshold, test all threshold values
-                    for threshold in pick_thresholds:
-                        strategy_name = (
-                            f"{short_term}_vs_{long_term}_" + \
-                            f"{pick_method}_{threshold}"
-                        )
-
-                        try:
-                            result = CmpBorrow(
-                                data, short_term, long_term, threshold,
-                                pick_method=pick_method)
-                            results[strategy_name] = {
-                                'short_term': short_term,
-                                'long_term': long_term,
-                                'pick_threshold': threshold,
-                                'pick_method': pick_method,
-                                'total_cost': result['total_cost'],
-                                'avg_rate': result['avg_rate'],
-                                'total_periods': result['total_periods'],
-                                'long_term_choices':
-                                    result['long_term_choices'],
-                                'short_term_choices':
-                                    result['short_term_choices'],
-                                'long_term_pct': (
-                                    result['long_term_choices'] /
-                                    result['total_periods'] * 100
-                                    if result['total_periods'] > 0 else 0
-                                )
-                            }
-                        except Exception as e:
-                            print(f"Error testing {strategy_name}: {e}")
-                else:
-                    # For pick_high and pick_low, threshold doesn't matter
-                    strategy_name = (
-                        f"{short_term}_vs_{long_term}_{pick_method}"
-                    )
-
-                    try:
-                        result = CmpBorrow(data, short_term, long_term, 0.0,
-                                           pick_method=pick_method)
-                        results[strategy_name] = {
-                            'short_term': short_term,
-                            'long_term': long_term,
-                            'pick_threshold': 0.0,
-                            'pick_method': pick_method,
-                            'total_cost': result['total_cost'],
-                            'avg_rate': result['avg_rate'],
-                            'total_periods': result['total_periods'],
-                            'long_term_choices': result['long_term_choices'],
-                            'short_term_choices': result['short_term_choices'],
-                            'long_term_pct': (
-                                result['long_term_choices'] /
-                                result['total_periods'] * 100
-                                if result['total_periods'] > 0 else 0
-                            )
-                        }
-                    except Exception as e:
-                        print(f"Error testing {strategy_name}: {e}")
+                combination_results = test_strategy_combination(
+                    data, short_term, long_term, pick_method, pick_thresholds)
+                results.update(combination_results)
 
     return results
 
@@ -536,6 +558,46 @@ def print_borrowing_history(result: Dict, max_records: int = 10):
         remaining = len(result['borrowing_history']) - max_records
         print(f"... and {remaining} more records")
 
+def print_strategy_summary(result: Dict, strategy_name: str = ""):
+    """
+    Print a summary of strategy results.
+
+    Args:
+        result: Results from CmpBorrow function
+        strategy_name: Name of the strategy (optional)
+    """
+    long_term_pct = result['long_term_choices'] / result['total_periods'] * 100
+    prefix = f"{strategy_name}: " if strategy_name else ""
+
+    print(
+        f"{prefix}Annualized Cost = ${result['total_cost']:,.0f}, "
+        f"Total Interest = ${result.get('compound_interest_cost', 0):,.0f}, "
+        f"Avg Rate = {result['avg_rate']:.2f}%, "
+        f"Long Term % = {long_term_pct:.1f}%"
+    )
+
+def run_single_strategy(data: List[Dict], short_term: str, long_term: str,
+                       threshold: float, pick_method: str) -> Dict:
+    """
+    Run a single strategy and return results.
+
+    Args:
+        data: Treasury yield data
+        short_term: Short term period
+        long_term: Long term period
+        threshold: Threshold value
+        pick_method: Pick method to use
+
+    Returns:
+        Dict: Strategy results
+    """
+    try:
+        return CmpBorrow(data, short_term, long_term, threshold,
+                        pick_method=pick_method)
+    except Exception as e:
+        print(f"Error with {pick_method} (threshold {threshold}): {e}")
+        return None
+
 def main():
     """
     Main function to run the treasury backtesting analysis.
@@ -620,14 +682,14 @@ def main():
 
         # Show detailed borrowing history for the best strategy
         try:
-            best_result = CmpBorrow(
+            best_result = run_single_strategy(
                 data, best_strategy_data['short_term'],
                 best_strategy_data['long_term'],
                 best_strategy_data['pick_threshold'],
-                pick_method =
-                    best_strategy_data.get('pick_method', 'use_threshold')
+                best_strategy_data.get('pick_method', 'use_threshold')
             )
-            print_borrowing_history(best_result, max_records=10)
+            if best_result:
+                print_borrowing_history(best_result, max_records=10)
         except Exception as e:
             print(f"Could not display borrowing history: {e}")
 
@@ -641,40 +703,18 @@ def main():
 
     # Test pick_high and pick_low
     for pick_method in ["pick_high", "pick_low"]:
-        try:
-            result = CmpBorrow(data, '1 Mo', '3 Mo', 0.0,
-                               pick_method=pick_method)
-            long_term_pct = result['long_term_choices'] / \
-                result['total_periods'] * 100
-            print(
-                f"{pick_method}: Annualized Cost = "
-                f"${result['total_cost']:,.0f}, "
-                f"Total Interest = "
-                f"${result.get('compound_interest_cost', 0):,.0f}, "
-                f"Avg Rate = {result['avg_rate']:.2f}%, "
-                f"Long Term % = {long_term_pct:.1f}%"
-            )
-        except Exception as e:
-            print(f"Error with {pick_method}: {e}")
+        result = run_single_strategy(data, '1 Mo', '3 Mo', 0.0, pick_method)
+        if result:
+            print_strategy_summary(result, pick_method)
 
     # Test use_threshold with different thresholds
     print("\nThreshold-based strategies:")
     for threshold in [0.0, 0.1, 0.2, 0.3, 0.5]:
-        try:
-            result = CmpBorrow(data, '1 Mo', '3 Mo', threshold,
-                               pick_method="use_threshold")
-            long_term_pct = result['long_term_choices'] / \
-                result['total_periods'] * 100
-            print(
-                f"use_threshold (threshold {threshold}): Annualized Cost = "
-                f"${result['total_cost']:,.0f}, "
-                f"Total Interest = "
-                f"${result.get('compound_interest_cost', 0):,.0f}, "
-                f"Avg Rate = {result['avg_rate']:.2f}%, "
-                f"Long Term % = {long_term_pct:.1f}%"
-            )
-        except Exception as e:
-            print(f"Error with threshold {threshold}: {e}")
+        result = run_single_strategy(data, '1 Mo', '3 Mo', threshold,
+                                     "use_threshold")
+        if result:
+            print_strategy_summary(
+                result, f"use_threshold (threshold {threshold})")
 
 if __name__ == "__main__":
     main()
