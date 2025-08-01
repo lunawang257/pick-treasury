@@ -704,7 +704,7 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
             )
 
 def print_borrowing_history(result: Dict, max_records: int = 10,
-                            output_file: str = None):
+                            output_file: str = None, skip_records: int = 0):
     """
     Print detailed borrowing history for a strategy and optionally write
     to file.
@@ -713,15 +713,32 @@ def print_borrowing_history(result: Dict, max_records: int = 10,
         result: Results from CmpBorrow function
         max_records: Maximum number of records to display
         output_file: Optional file path to write tab-delimited history
+        skip_records: Number of records to skip from the beginning
     """
     if not result.get('borrowing_history'):
         print("No borrowing history available.")
         return
 
-    print(
-        f"\nDetailed Borrowing History "
-        f"(showing first {max_records} records):"
-    )
+    # Skip first N records and take next max_records
+    start_index = skip_records
+    end_index = skip_records + max_records
+    records_to_show = result['borrowing_history'][start_index:end_index]
+
+    # Check if there are any records to show after skipping
+    if not records_to_show:
+        return
+
+    # Print headers only if there are records to show
+    if skip_records > 0:
+        print(
+            f"\nDetailed Borrowing History "
+            f"(skipping first {skip_records} records, showing next {max_records} records):"
+        )
+    else:
+        print(
+            f"\nDetailed Borrowing History "
+            f"(showing first {max_records} records):"
+        )
     print("-" * 140)
     print(
         "Date         Strategy  Treasury%  Actual%  Duration  Principal    "
@@ -731,8 +748,18 @@ def print_borrowing_history(result: Dict, max_records: int = 10,
 
     # Prepare data for both console output and file writing
     history_data = []
-    for record in result['borrowing_history'][:max_records]:
+    # Skip first N records and take next max_records
+    start_index = skip_records
+    end_index = skip_records + max_records
+    records_to_show = result['borrowing_history'][start_index:end_index]
+
+    # Check if there are any records to show after skipping
+    if not records_to_show:
+        return
+
+    for record in records_to_show:
         date_str = record['borrow_date'].strftime('%Y-%m-%d')
+
         strategy = record['strategy']
         treasury_rate = record['treasury_rate']
         actual_rate = record['actual_rate']
@@ -759,9 +786,12 @@ def print_borrowing_history(result: Dict, max_records: int = 10,
             'New_Principal': f"{record['principal_at_end']:,.0f}"
         })
 
-    if len(result['borrowing_history']) > max_records:
-        remaining = len(result['borrowing_history']) - max_records
-        print(f"... and {remaining} more records")
+    total_records = len(result['borrowing_history'])
+    shown_records = len(records_to_show)
+    remaining_after_skip = total_records - skip_records - shown_records
+
+    if remaining_after_skip > 0:
+        print(f"... and {remaining_after_skip} more records")
 
     # Write to file if specified
     if output_file:
@@ -879,6 +909,35 @@ def generate_strategy_history(data: List[Dict], strategy_name: str, strategy_dat
         print(f"Error generating history for strategy {strategy_name}: {e}")
         return None
 
+def write_strategy_history(data: List[Dict], strategy_name: str, strategy_data: Dict,
+                         strategy_id: str, skip_records: int = 0) -> bool:
+    """
+    Generate and write detailed borrowing history for a strategy to a CSV file.
+
+    Args:
+        data: Treasury yield data
+        strategy_name: Name of the strategy
+        strategy_data: Strategy configuration data
+        strategy_id: Strategy ID for filename
+        skip_records: Number of records to skip from the beginning
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    print(f"\nProcessing Strategy ID {strategy_id}: {strategy_name}")
+
+    # Generate detailed history
+    history_result = generate_strategy_history(data, strategy_name, strategy_data)
+    if history_result:
+        # Create output filename with strategy name
+        output_filename = f"results/borrow-history-{strategy_id}-{strategy_name}.csv"
+        print_borrowing_history(history_result, max_records=len(history_result['borrowing_history']),
+                             output_file=output_filename, skip_records=skip_records)
+        return True
+    else:
+        print(f"  Failed to generate history for strategy {strategy_name}")
+        return False
+
 def main():
     """
     Main function to run the treasury backtesting analysis.
@@ -895,12 +954,20 @@ def main():
     parser.add_argument(
         '--filtered-data-file', '-f',
         default='monthly-yield.csv',
-        help='Output file for filtered monthly yield data (default: monthly-yield.csv)'
+        help='Output file for filtered monthly yield data' + \
+             '(default: monthly-yield.csv)'
     )
     parser.add_argument(
         '--strategy-id', '-s',
         type=int,
-        help='Generate detailed borrowing history for specific strategy ID (use -1 for all strategies)'
+        help='Generate detailed borrowing history for specific strategy ID' + \
+            ' (use -1 for all strategies)'
+    )
+    parser.add_argument(
+        '--skip-records', '-k',
+        type=int,
+        default=1000000,
+        help='Number of records to skip from the beginning when printing detailed history (default: 1000000)'
     )
     args = parser.parse_args()
 
@@ -995,7 +1062,7 @@ def main():
             )
             if best_result:
                 print_borrowing_history(best_result, max_records=10,
-                                        output_file=args.output_file)
+                                        output_file=args.output_file, skip_records=args.skip_records)
         except Exception as e:
             print(f"Could not display borrowing history: {e}")
 
@@ -1012,17 +1079,7 @@ def main():
 
             for strategy_name, strategy_data in results.items():
                 strategy_id = strategy_data.get('strategy_id', 'N/A')
-                print(f"\nProcessing Strategy ID {strategy_id}: {strategy_name}")
-
-                # Generate detailed history
-                history_result = generate_strategy_history(data, strategy_name, strategy_data)
-                if history_result:
-                    # Create output filename with strategy name
-                    output_filename = f"borrow-history-{strategy_id}-{strategy_name}.csv"
-                    print_borrowing_history(history_result, max_records=len(history_result['borrowing_history']),
-                                         output_file=output_filename)
-                else:
-                    print(f"  Failed to generate history for strategy {strategy_name}")
+                write_strategy_history(data, strategy_name, strategy_data, strategy_id, args.skip_records)
         else:
             # Generate history for specific strategy ID
             strategy_name, strategy_data = find_strategy_by_id(results, args.strategy_id)
@@ -1032,13 +1089,7 @@ def main():
                 print(f"Strategy: {strategy_name}")
                 print("=" * 50)
 
-                # Generate detailed history
-                history_result = generate_strategy_history(data, strategy_name, strategy_data)
-                if history_result:
-                    # Create output filename with strategy name
-                    output_filename = f"borrow-history-{args.strategy_id}-{strategy_name}.csv"
-                    print_borrowing_history(history_result, max_records=len(history_result['borrowing_history']),
-                                         output_file=output_filename)
+                write_strategy_history(data, strategy_name, strategy_data, str(args.strategy_id), args.skip_records)
             else:
                 print(f"Strategy ID {args.strategy_id} not found. Available strategy IDs:")
                 for strategy_name, strategy_data in results.items():
