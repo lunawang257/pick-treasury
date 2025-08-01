@@ -37,6 +37,35 @@ def is_third_friday(date_str: str) -> bool:
     except:
         return False
 
+def write_filtered_data(data: List[Dict], output_file: str):
+    """
+    Write filtered data to a tab-separated file.
+
+    Args:
+        data: Filtered treasury yield data
+        output_file: Output file path
+    """
+    try:
+        with open(output_file, 'w', newline='') as file:
+            # Define fieldnames for the output file
+            fieldnames = ['Date'] + TREASURY_PERIODS
+            writer = csv.DictWriter(file, fieldnames=fieldnames, delimiter='\t')
+            writer.writeheader()
+
+            for row in data:
+                # Create a row for writing
+                output_row = {'Date': row['Date'].strftime('%Y-%m-%d')}
+                for period in TREASURY_PERIODS:
+                    if row[period] is not None:
+                        output_row[period] = f"{row[period]:.2f}"
+                    else:
+                        output_row[period] = ""
+                writer.writerow(output_row)
+
+        print(f"Filtered data written to: {output_file}")
+    except Exception as e:
+        print(f"Error writing filtered data to {output_file}: {e}")
+
 def load_and_filter_data(csv_file: str) -> List[Dict]:
     """
     Load CSV data and filter for 3rd Friday of each month with specified
@@ -151,7 +180,7 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
 def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
               pick_threshold: float, rate_slippage: float = RATE_SLIPPAGE,
               initial_amount: float = 1000000.0,
-              pick_method: str = "use_threshold") -> Dict:
+              pick_method: str = "use_threshold", fixed_term: str = None) -> Dict:
     """
     Compare two money borrowing strategies using compound interest
     simulation.
@@ -165,6 +194,8 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
         initial_amount: Initial amount to borrow (default $1M)
         pick_method: Method for choosing rates ("pick_high", "pick_low",
           "use_threshold")
+        fixed_term: Fixed term to always use (e.g., "1 Mo", "3 Mo") - overrides
+          other methods if specified
 
     Returns:
         Dict: Results including compound interest cost, detailed borrowing
@@ -232,28 +263,66 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
                 f"{short_term}: {short_rate}, {long_term}: {long_rate}"
             )
 
-        # Determine strategy decision based on pick_method
-        if pick_method == "pick_high":
+        # Determine strategy decision based on pick_method or fixed_term
+        if fixed_term is not None:
+            # Fixed strategy: always use the specified term
+            if fixed_term == long_term:
+                strategy = long_term
+                chosen_rate = long_rate
+                duration = duration_months[long_term]
+            elif fixed_term == short_term:
+                strategy = short_term
+                chosen_rate = short_rate
+                duration = duration_months[short_term]
+            else:
+                # If fixed_term is not one of the two terms being compared,
+                # use the rate from the fixed term if available
+                if fixed_term in row:
+                    strategy = fixed_term
+                    chosen_rate = row[fixed_term]
+                    duration = duration_months[fixed_term]
+                else:
+                    # Fall back to short term if fixed term not available
+                    strategy = short_term
+                    chosen_rate = short_rate
+                    duration = duration_months[short_term]
+        elif pick_method == "pick_high":
             # Always use the higher rate
             use_long_term = long_rate > short_rate
+            if use_long_term:
+                strategy = long_term
+                chosen_rate = long_rate
+                duration = duration_months[long_term]
+            else:
+                strategy = short_term
+                chosen_rate = short_rate
+                duration = duration_months[short_term]
         elif pick_method == "pick_low":
             # Always use the lower rate
             use_long_term = long_rate < short_rate
+            if use_long_term:
+                strategy = long_term
+                chosen_rate = long_rate
+                duration = duration_months[long_term]
+            else:
+                strategy = short_term
+                chosen_rate = short_rate
+                duration = duration_months[short_term]
         else:  # use_threshold
             if short_rate == 0:
                 use_long_term = True
             else:
                 # Use the original threshold-based strategy
                 use_long_term = long_rate / short_rate > (1 + pick_threshold)
-
-        if use_long_term:
-            strategy = long_term
-            chosen_rate = long_rate
-            duration = duration_months[long_term]
-        else:
-            strategy = short_term
-            chosen_rate = short_rate
-            duration = duration_months[short_term]
+            
+            if use_long_term:
+                strategy = long_term
+                chosen_rate = long_rate
+                duration = duration_months[long_term]
+            else:
+                strategy = short_term
+                chosen_rate = short_rate
+                duration = duration_months[short_term]
 
         # Add rate slippage to get actual borrowing cost
         actual_rate = chosen_rate + rate_slippage
@@ -344,7 +413,7 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
     return results
 
 def create_strategy_result(result: Dict, short_term: str, long_term: str,
-                         pick_threshold: float, pick_method: str) -> Dict:
+                         pick_threshold: float, pick_method: str, fixed_term: str = None) -> Dict:
     """
     Create a standardized result dictionary for a strategy.
 
@@ -354,6 +423,7 @@ def create_strategy_result(result: Dict, short_term: str, long_term: str,
         long_term: Long term treasury period
         pick_threshold: Threshold used
         pick_method: Method used for picking rates
+        fixed_term: Fixed term used (if applicable)
 
     Returns:
         Dict: Standardized result dictionary
@@ -363,6 +433,7 @@ def create_strategy_result(result: Dict, short_term: str, long_term: str,
         'long_term': long_term,
         'pick_threshold': pick_threshold,
         'pick_method': pick_method,
+        'fixed_term': fixed_term,
         'total_cost': result['total_cost'],
         'avg_rate': result['avg_rate'],
         'total_periods': result['total_periods'],
@@ -421,6 +492,30 @@ def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
 
     return results
 
+def test_fixed_strategies(data: List[Dict]) -> Dict:
+    """
+    Test fixed strategies for each treasury period.
+
+    Args:
+        data: Treasury yield data
+
+    Returns:
+        Dict: Results for fixed strategies
+    """
+    results = {}
+
+    for term in TREASURY_PERIODS:
+        strategy_name = f"fixed_{term}"
+        
+        try:
+            result = CmpBorrow(data, '1 Mo', '3 Mo', 0.0, fixed_term=term)
+            results[strategy_name] = create_strategy_result(
+                result, '1 Mo', '3 Mo', 0.0, 'fixed', fixed_term=term)
+        except Exception as e:
+            print(f"Error testing {strategy_name}: {e}")
+
+    return results
+
 def backtest_strategies(
     data: List[Dict], pick_thresholds: List[float] = None
 ) -> Dict:
@@ -448,6 +543,10 @@ def backtest_strategies(
                     data, short_term, long_term, pick_method, pick_thresholds)
                 results.update(combination_results)
 
+    # Test fixed strategies
+    fixed_results = test_fixed_strategies(data)
+    results.update(fixed_results)
+
     return results
 
 def find_best_strategy(results: Dict) -> Tuple[str, Dict]:
@@ -466,13 +565,14 @@ def find_best_strategy(results: Dict) -> Tuple[str, Dict]:
     best_strategy = min(results.items(), key=lambda x: x[1]['total_cost'])
     return best_strategy[0], best_strategy[1]
 
-def print_results(results: Dict, top_n: int = 10):
+def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
     """
-    Print the top N performing strategies.
+    Print the top N and worst N performing strategies.
 
     Args:
         results: Results from backtest_strategies
         top_n: Number of top strategies to display
+        worst_n: Number of worst strategies to display
     """
     if not results:
         print("No results to display.")
@@ -481,6 +581,7 @@ def print_results(results: Dict, top_n: int = 10):
     # Sort by compound interest cost (lower is better)
     sorted_results = sorted(results.items(), key=lambda x: x[1]['total_cost'])
 
+    # Print top strategies
     print(
         f"\nTop {min(top_n, len(sorted_results))} Strategies "
         f"(by annualized compound interest cost) "
@@ -502,6 +603,30 @@ def print_results(results: Dict, top_n: int = 10):
             f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
             f"{data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}"
         )
+
+    # Print worst strategies
+    if worst_n > 0 and len(sorted_results) > top_n:
+        print(
+            f"\nWorst {min(worst_n, len(sorted_results) - top_n)} Strategies "
+            f"(by annualized compound interest cost):"
+        )
+        print("-" * 110)
+        print(
+            f"{'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
+            f"{'Final Amount':<15} {'Avg Rate':<10} {'Long%':<8}"
+        )
+        print("-" * 110)
+
+        for i, (strategy_name, data) in enumerate(sorted_results[-worst_n:]):
+            annualized_cost = data['total_cost']
+            total_interest = data.get('compound_interest_cost', 0)
+            final_amount = data.get('final_amount', 0)
+            print(
+                f"{len(sorted_results) - worst_n + i}: {strategy_name:<40} "
+                f"${annualized_cost:<14,.0f} "
+                f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
+                f"{data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}"
+            )
 
 def print_borrowing_history(result: Dict, max_records: int = 10,
                             output_file: str = None):
@@ -609,7 +734,7 @@ def print_strategy_summary(result: Dict, strategy_name: str = ""):
     )
 
 def run_single_strategy(data: List[Dict], short_term: str, long_term: str,
-                       threshold: float, pick_method: str) -> Dict:
+                       threshold: float, pick_method: str, fixed_term: str = None) -> Dict:
     """
     Run a single strategy and return results.
 
@@ -619,13 +744,14 @@ def run_single_strategy(data: List[Dict], short_term: str, long_term: str,
         long_term: Long term period
         threshold: Threshold value
         pick_method: Pick method to use
+        fixed_term: Fixed term to use (if applicable)
 
     Returns:
         Dict: Strategy results
     """
     try:
         return CmpBorrow(data, short_term, long_term, threshold,
-                        pick_method=pick_method)
+                        pick_method=pick_method, fixed_term=fixed_term)
     except Exception as e:
         print(f"Error with {pick_method} (threshold {threshold}): {e}")
         return None
@@ -640,8 +766,13 @@ def main():
     )
     parser.add_argument(
         '--output-file', '-o',
-        default='borrow_history.txt',
+        default='borrow-history.csv',
         help='Output file for borrowing history (default: borrow_history.txt)'
+    )
+    parser.add_argument(
+        '--filtered-data-file', '-f',
+        default='monthly-yield.csv',
+        help='Output file for filtered monthly yield data (default: monthly-yield.csv)'
     )
     args = parser.parse_args()
 
@@ -656,6 +787,9 @@ def main():
 
         if data:
             print(f"Date range: {data[0]['Date']} to {data[-1]['Date']}")
+
+            # Write filtered data to file
+            write_filtered_data(data, args.filtered_data_file)
 
             # Display sample of filtered data
             print("\nSample of filtered data:")
@@ -737,8 +871,8 @@ def main():
         except Exception as e:
             print(f"Could not display borrowing history: {e}")
 
-    # Print top strategies
-    print_results(results, top_n=60)
+    # Print top and worst strategies
+    print_results(results, top_n=len(results), worst_n=0)
 
     # Example of specific strategy comparison
     print("\n" + "=" * 50)
@@ -759,6 +893,13 @@ def main():
         if result:
             print_strategy_summary(
                 result, f"use_threshold (threshold {threshold})")
+
+    # Test fixed strategies
+    print("\nFixed strategies:")
+    for term in TREASURY_PERIODS:
+        result = run_single_strategy(data, '1 Mo', '3 Mo', 0.0, 'fixed', fixed_term=term)
+        if result:
+            print_strategy_summary(result, f"fixed_{term}")
 
 if __name__ == "__main__":
     main()
