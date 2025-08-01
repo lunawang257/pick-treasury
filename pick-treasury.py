@@ -430,6 +430,26 @@ def create_strategy_result(result: Dict, short_term: str, long_term: str,
     Returns:
         Dict: Standardized result dictionary
     """
+    # Calculate annualized rate using compound interest formula
+    initial_amount = 1000000.0  # Default initial amount
+    final_amount = result.get('final_amount', initial_amount)
+
+    # Get the time period from the borrowing history
+    borrowing_history = result.get('borrowing_history', [])
+    if borrowing_history:
+        start_date = borrowing_history[0]['borrow_date']
+        end_date = borrowing_history[-1]['borrow_date']
+        total_years = (end_date - start_date).days / 365.25
+
+        if total_years > 0 and final_amount > 0:
+            # Use compound interest formula: final_amount = initial_amount * (1 + rate)^years
+            # Solve for rate: rate = (final_amount/initial_amount)^(1/years) - 1
+            annualized_rate = ((final_amount / initial_amount) ** (1 / total_years) - 1) * 100
+        else:
+            annualized_rate = 0.0
+    else:
+        annualized_rate = 0.0
+
     return {
         'strategy_id': strategy_id,
         'short_term': short_term,
@@ -439,6 +459,8 @@ def create_strategy_result(result: Dict, short_term: str, long_term: str,
         'fixed_term': fixed_term,
         'total_cost': result['total_cost'],
         'avg_rate': result['avg_rate'],
+        'annualized_compound_interest_cost': result.get('annualized_compound_interest_cost', 0),
+        'annualized_rate': annualized_rate,
         'total_periods': result['total_periods'],
         'long_term_choices': result['long_term_choices'],
         'short_term_choices': result['short_term_choices'],
@@ -579,6 +601,26 @@ def backtest_strategies(
 
     return results
 
+def find_strategy_by_id(results: Dict, strategy_id: int) -> Tuple[str, Dict]:
+    """
+    Find a strategy by its ID.
+
+    Args:
+        results: Results from backtest_strategies
+        strategy_id: Strategy ID to find
+
+    Returns:
+        Tuple: (strategy_name, strategy_data) or (None, None) if not found
+    """
+    if not results:
+        return None, None
+
+    for strategy_name, strategy_data in results.items():
+        if strategy_data.get('strategy_id') == strategy_id:
+            return strategy_name, strategy_data
+
+    return None, None
+
 def find_best_strategy(results: Dict) -> Tuple[str, Dict]:
     """
     Find the best performing strategy based on total cost.
@@ -620,7 +662,7 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
     print("-" * 130)
     print(
         f"{'ID':<12} {'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
-        f"{'Final Amount':<15} {'Avg Rate':<10} {'Long%':<8}"
+        f"{'Final Amount':<15} {'Rate':<10} {'Long%':<8}"
     )
     print("-" * 130)
 
@@ -629,10 +671,11 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
         total_interest = data.get('compound_interest_cost', 0)
         final_amount = data.get('final_amount', 0)
         strategy_id = data.get('strategy_id', 'N/A')
+        rate = data.get('annualized_rate', 0)
         print(
             f"{i}: {strategy_id:<12} {strategy_name:<40} ${annualized_cost:<14,.0f} "
             f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
-            f"{data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}"
+            f"{rate:<9,.2f}% {data['long_term_pct']:<8.1f}"
         )
 
     # Print worst strategies
@@ -644,7 +687,7 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
         print("-" * 130)
         print(
             f"{'ID':<12} {'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
-            f"{'Final Amount':<15} {'Avg Rate':<10} {'Long%':<8}"
+            f"{'Final Amount':<15} {'Rate':<10} {'Long%':<8}"
         )
         print("-" * 130)
 
@@ -653,11 +696,12 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
             total_interest = data.get('compound_interest_cost', 0)
             final_amount = data.get('final_amount', 0)
             strategy_id = data.get('strategy_id', 'N/A')
+            rate = data.get('annualized_rate', 0)
             print(
                 f"{len(sorted_results) - worst_n + i}: {strategy_id:<12} {strategy_name:<40} "
                 f"${annualized_cost:<14,.0f} "
                 f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
-                f"{data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}"
+                f"{rate:<9,.2f}% {data['long_term_pct']:<8.1f}"
             )
 
 def print_borrowing_history(result: Dict, max_records: int = 10,
@@ -679,26 +723,27 @@ def print_borrowing_history(result: Dict, max_records: int = 10,
         f"\nDetailed Borrowing History "
         f"(showing first {max_records} records):"
     )
-    print("-" * 120)
+    print("-" * 140)
     print(
-        "Date         Strategy  Rate%  Duration  Principal    "
+        "Date         Strategy  Treasury%  Actual%  Duration  Principal    "
         "Interest      New Principal"
     )
-    print("-" * 120)
+    print("-" * 140)
 
     # Prepare data for both console output and file writing
     history_data = []
     for record in result['borrowing_history'][:max_records]:
         date_str = record['borrow_date'].strftime('%Y-%m-%d')
         strategy = record['strategy']
-        rate = record['actual_rate']
+        treasury_rate = record['treasury_rate']
+        actual_rate = record['actual_rate']
         duration = f"{record['duration_months']}mo"
         principal = f"${record['principal_at_start']:,.0f}"
         interest = f"${record['interest_paid']:,.0f}"
         new_principal = f"${record['principal_at_end']:,.0f}"
 
         row_str = (
-            f"{date_str:<12} {strategy:<8} {rate:<6.2f} {duration:<9} "
+            f"{date_str:<12} {strategy:<8} {treasury_rate:<9.2f} {actual_rate:<7.2f} {duration:<9} "
             f"{principal:<12} {interest:<12} {new_principal:<15}"
         )
         print(row_str)
@@ -707,7 +752,8 @@ def print_borrowing_history(result: Dict, max_records: int = 10,
         history_data.append({
             'Date': date_str,
             'Strategy': strategy,
-            'Rate': f"{rate:.2f}",
+            'Treasury_Rate': f"{treasury_rate:.2f}",
+            'Actual_Rate': f"{actual_rate:.2f}",
             'Duration': f"{record['duration_months']}mo",
             'Principal': f"{record['principal_at_start']:,.0f}",
             'Interest': f"{record['interest_paid']:,.0f}",
@@ -724,7 +770,7 @@ def print_borrowing_history(result: Dict, max_records: int = 10,
             with open(output_file, 'w', newline='') as file:
                 if history_data:
                     # Write header
-                    fieldnames = ['Date', 'Strategy', 'Rate', 'Duration',
+                    fieldnames = ['Date', 'Strategy', 'Treasury_Rate', 'Actual_Rate', 'Duration',
                                  'Principal', 'Interest', 'New_Principal']
                     writer = csv.DictWriter(file, fieldnames=fieldnames,
                                             delimiter='\t')
@@ -736,7 +782,8 @@ def print_borrowing_history(result: Dict, max_records: int = 10,
                         writer.writerow({
                             'Date': date_str,
                             'Strategy': record['strategy'],
-                            'Rate': f"{record['actual_rate']:.2f}",
+                            'Treasury_Rate': f"{record['treasury_rate']:.2f}",
+                            'Actual_Rate': f"{record['actual_rate']:.2f}",
                             'Duration': f"{record['duration_months']}mo",
                             'Principal': f"{record['principal_at_start']:,.0f}",
                             'Interest': f"{record['interest_paid']:,.0f}",
@@ -758,10 +805,30 @@ def print_strategy_summary(result: Dict, strategy_name: str = ""):
     long_term_pct = result['long_term_choices'] / result['total_periods'] * 100
     prefix = f"{strategy_name}: " if strategy_name else ""
 
+    # Calculate annualized rate using compound interest formula
+    initial_amount = 1000000.0  # Default initial amount
+    final_amount = result.get('final_amount', initial_amount)
+
+    # Get the time period from the borrowing history
+    borrowing_history = result.get('borrowing_history', [])
+    if borrowing_history:
+        start_date = borrowing_history[0]['borrow_date']
+        end_date = borrowing_history[-1]['borrow_date']
+        total_years = (end_date - start_date).days / 365.25
+
+        if total_years > 0 and final_amount > 0:
+            # Use compound interest formula: final_amount = initial_amount * (1 + rate)^years
+            # Solve for rate: rate = (final_amount/initial_amount)^(1/years) - 1
+            rate = ((final_amount / initial_amount) ** (1 / total_years) - 1) * 100
+        else:
+            rate = 0.0
+    else:
+        rate = 0.0
+
     print(
         f"{prefix}Annualized Cost = ${result['total_cost']:,.0f}, "
         f"Total Interest = ${result.get('compound_interest_cost', 0):,.0f}, "
-        f"Avg Rate = {result['avg_rate']:.2f}%, "
+        f"Rate = {rate:,.2f}%, "
         f"Long Term % = {long_term_pct:.1f}%"
     )
 
@@ -788,6 +855,31 @@ def run_single_strategy(data: List[Dict], short_term: str, long_term: str,
         print(f"Error with {pick_method} (threshold {threshold}): {e}")
         return None
 
+def generate_strategy_history(data: List[Dict], strategy_name: str, strategy_data: Dict) -> Dict:
+    """
+    Generate detailed borrowing history for a specific strategy.
+
+    Args:
+        data: Treasury yield data
+        strategy_name: Name of the strategy
+        strategy_data: Strategy data containing parameters
+
+    Returns:
+        Dict: Detailed borrowing history results
+    """
+    try:
+        short_term = strategy_data['short_term']
+        long_term = strategy_data['long_term']
+        pick_threshold = strategy_data['pick_threshold']
+        pick_method = strategy_data['pick_method']
+        fixed_term = strategy_data.get('fixed_term')
+
+        return CmpBorrow(data, short_term, long_term, pick_threshold,
+                        pick_method=pick_method, fixed_term=fixed_term)
+    except Exception as e:
+        print(f"Error generating history for strategy {strategy_name}: {e}")
+        return None
+
 def main():
     """
     Main function to run the treasury backtesting analysis.
@@ -805,6 +897,11 @@ def main():
         '--filtered-data-file', '-f',
         default='monthly-yield.csv',
         help='Output file for filtered monthly yield data (default: monthly-yield.csv)'
+    )
+    parser.add_argument(
+        '--strategy-id', '-s',
+        type=int,
+        help='Generate detailed borrowing history for specific strategy ID (use -1 for all strategies)'
     )
     args = parser.parse_args()
 
@@ -905,6 +1002,49 @@ def main():
 
     # Print top and worst strategies
     print_results(results, top_n=len(results), worst_n=0)
+
+        # Handle strategy ID parameter
+    if args.strategy_id is not None:
+        if args.strategy_id == -1:
+            # Generate history for all strategies
+            print(f"\n" + "=" * 50)
+            print(f"Generating detailed borrowing history for ALL strategies")
+            print("=" * 50)
+
+            for strategy_name, strategy_data in results.items():
+                strategy_id = strategy_data.get('strategy_id', 'N/A')
+                print(f"\nProcessing Strategy ID {strategy_id}: {strategy_name}")
+
+                # Generate detailed history
+                history_result = generate_strategy_history(data, strategy_name, strategy_data)
+                if history_result:
+                    # Create output filename
+                    output_filename = f"borrow-history-{strategy_id}.csv"
+                    print_borrowing_history(history_result, max_records=len(history_result['borrowing_history']),
+                                         output_file=output_filename)
+                else:
+                    print(f"  Failed to generate history for strategy {strategy_name}")
+        else:
+            # Generate history for specific strategy ID
+            strategy_name, strategy_data = find_strategy_by_id(results, args.strategy_id)
+            if strategy_name and strategy_data:
+                print(f"\n" + "=" * 50)
+                print(f"Generating detailed borrowing history for Strategy ID {args.strategy_id}")
+                print(f"Strategy: {strategy_name}")
+                print("=" * 50)
+
+                # Generate detailed history
+                history_result = generate_strategy_history(data, strategy_name, strategy_data)
+                if history_result:
+                    # Create output filename
+                    output_filename = f"borrow-history-{args.strategy_id}.csv"
+                    print_borrowing_history(history_result, max_records=len(history_result['borrowing_history']),
+                                         output_file=output_filename)
+            else:
+                print(f"Strategy ID {args.strategy_id} not found. Available strategy IDs:")
+                for strategy_name, strategy_data in results.items():
+                    strategy_id = strategy_data.get('strategy_id', 'N/A')
+                    print(f"  ID {strategy_id}: {strategy_name}")
 
     # Example of specific strategy comparison
     print("\n" + "=" * 50)
