@@ -622,6 +622,15 @@ def convert_skip_to_periods(skip_terms: List[str]) -> List[str]:
 
     return [skip_mapping.get(term.lower(), term) for term in skip_terms]
 
+def reset_skip_info_flag():
+    """
+    Reset the skip info printed flag to allow printing skip information again.
+    """
+    if hasattr(backtest_strategies, '_skip_info_printed'):
+        delattr(backtest_strategies, '_skip_info_printed')
+    if hasattr(backtest_strategies, '_available_periods_printed'):
+        delattr(backtest_strategies, '_available_periods_printed')
+
 def get_filtered_treasury_periods(skip_terms: List[str] = None) -> List[str]:
     """
     Get treasury periods after filtering out skipped terms.
@@ -679,18 +688,23 @@ def backtest_strategies(
     pick_methods = ["pick_high", "pick_low", "use_threshold"]
     results = {}
 
-    # Get filtered treasury periods
+        # Get filtered treasury periods
     filtered_periods = get_filtered_treasury_periods(skip_terms)
 
-    if skip_terms:
+    # Print skip information only once per run
+    if skip_terms and not hasattr(backtest_strategies, '_skip_info_printed'):
         print(f"Skipping treasury periods: {convert_skip_to_periods(skip_terms)}")
         print(f"Using treasury periods: {filtered_periods}")
+        backtest_strategies._skip_info_printed = True
 
     # Check which treasury periods have sufficient data
     available_periods = [period for period in filtered_periods
                         if check_data_availability(data, period)]
 
-    print(f"Available treasury periods: {available_periods}")
+    # Print available periods only once per run
+    if not hasattr(backtest_strategies, '_available_periods_printed'):
+        print(f"Available treasury periods: {available_periods}")
+        backtest_strategies._available_periods_printed = True
 
     if len(available_periods) < 2:
         print("Warning: Need at least 2 treasury periods with data to run backtests")
@@ -1379,6 +1393,9 @@ def main():
 
     print("Treasury Bill Selection Strategy Backtester")
     print("=" * 50)
+
+    # Reset skip info flag at the beginning of each run
+    reset_skip_info_flag()
 
     # Load and filter data
     print("Loading and filtering data...")
