@@ -314,7 +314,7 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
             else:
                 # Use the original threshold-based strategy
                 use_long_term = long_rate / short_rate > (1 + pick_threshold)
-            
+
             if use_long_term:
                 strategy = long_term
                 chosen_rate = long_rate
@@ -413,7 +413,8 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
     return results
 
 def create_strategy_result(result: Dict, short_term: str, long_term: str,
-                         pick_threshold: float, pick_method: str, fixed_term: str = None) -> Dict:
+                         pick_threshold: float, pick_method: str, fixed_term: str = None,
+                         strategy_id: str = None) -> Dict:
     """
     Create a standardized result dictionary for a strategy.
 
@@ -424,11 +425,13 @@ def create_strategy_result(result: Dict, short_term: str, long_term: str,
         pick_threshold: Threshold used
         pick_method: Method used for picking rates
         fixed_term: Fixed term used (if applicable)
+        strategy_id: Unique identifier for the strategy
 
     Returns:
         Dict: Standardized result dictionary
     """
     return {
+        'strategy_id': strategy_id,
         'short_term': short_term,
         'long_term': long_term,
         'pick_threshold': pick_threshold,
@@ -444,6 +447,27 @@ def create_strategy_result(result: Dict, short_term: str, long_term: str,
             if result['total_periods'] > 0 else 0
         )
     }
+
+# Global counter for strategy IDs
+_strategy_id_counter = 0
+
+def get_next_strategy_id() -> int:
+    """
+    Get the next available strategy ID.
+
+    Returns:
+        int: Next strategy ID
+    """
+    global _strategy_id_counter
+    _strategy_id_counter += 1
+    return _strategy_id_counter - 1
+
+def reset_strategy_id_counter():
+    """
+    Reset the strategy ID counter to 0.
+    """
+    global _strategy_id_counter
+    _strategy_id_counter = 0
 
 def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
                               pick_method: str,
@@ -469,24 +493,28 @@ def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
             strategy_name = (
                 f"{short_term}_vs_{long_term}_{pick_method}_{threshold}"
             )
+            strategy_id = get_next_strategy_id()
 
             try:
                 result = CmpBorrow(
                     data, short_term, long_term, threshold,
                     pick_method=pick_method)
                 results[strategy_name] = create_strategy_result(
-                    result, short_term, long_term, threshold, pick_method)
+                    result, short_term, long_term, threshold, pick_method,
+                    strategy_id=strategy_id)
             except Exception as e:
                 print(f"Error testing {strategy_name}: {e}")
     else:
         # For pick_high and pick_low, threshold doesn't matter
         strategy_name = f"{short_term}_vs_{long_term}_{pick_method}"
+        strategy_id = get_next_strategy_id()
 
         try:
             result = CmpBorrow(data, short_term, long_term, 0.0,
                                pick_method=pick_method)
             results[strategy_name] = create_strategy_result(
-                result, short_term, long_term, 0.0, pick_method)
+                result, short_term, long_term, 0.0, pick_method,
+                strategy_id=strategy_id)
         except Exception as e:
             print(f"Error testing {strategy_name}: {e}")
 
@@ -506,11 +534,13 @@ def test_fixed_strategies(data: List[Dict]) -> Dict:
 
     for term in TREASURY_PERIODS:
         strategy_name = f"fixed_{term}"
-        
+        strategy_id = get_next_strategy_id()
+
         try:
             result = CmpBorrow(data, '1 Mo', '3 Mo', 0.0, fixed_term=term)
             results[strategy_name] = create_strategy_result(
-                result, '1 Mo', '3 Mo', 0.0, 'fixed', fixed_term=term)
+                result, '1 Mo', '3 Mo', 0.0, 'fixed', fixed_term=term,
+                strategy_id=strategy_id)
         except Exception as e:
             print(f"Error testing {strategy_name}: {e}")
 
@@ -587,19 +617,20 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
         f"(by annualized compound interest cost) "
         f"out of {len(sorted_results)} total strategies:"
     )
-    print("-" * 110)
+    print("-" * 130)
     print(
-        f"{'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
+        f"{'ID':<12} {'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
         f"{'Final Amount':<15} {'Avg Rate':<10} {'Long%':<8}"
     )
-    print("-" * 110)
+    print("-" * 130)
 
     for i, (strategy_name, data) in enumerate(sorted_results[:top_n]):
         annualized_cost = data['total_cost']
         total_interest = data.get('compound_interest_cost', 0)
         final_amount = data.get('final_amount', 0)
+        strategy_id = data.get('strategy_id', 'N/A')
         print(
-            f"{i}: {strategy_name:<40} ${annualized_cost:<14,.0f} "
+            f"{i}: {strategy_id:<12} {strategy_name:<40} ${annualized_cost:<14,.0f} "
             f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
             f"{data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}"
         )
@@ -610,19 +641,20 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
             f"\nWorst {min(worst_n, len(sorted_results) - top_n)} Strategies "
             f"(by annualized compound interest cost):"
         )
-        print("-" * 110)
+        print("-" * 130)
         print(
-            f"{'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
+            f"{'ID':<12} {'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
             f"{'Final Amount':<15} {'Avg Rate':<10} {'Long%':<8}"
         )
-        print("-" * 110)
+        print("-" * 130)
 
         for i, (strategy_name, data) in enumerate(sorted_results[-worst_n:]):
             annualized_cost = data['total_cost']
             total_interest = data.get('compound_interest_cost', 0)
             final_amount = data.get('final_amount', 0)
+            strategy_id = data.get('strategy_id', 'N/A')
             print(
-                f"{len(sorted_results) - worst_n + i}: {strategy_name:<40} "
+                f"{len(sorted_results) - worst_n + i}: {strategy_id:<12} {strategy_name:<40} "
                 f"${annualized_cost:<14,.0f} "
                 f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
                 f"{data['avg_rate']:<10.2f} {data['long_term_pct']:<8.1f}"
