@@ -48,9 +48,16 @@ Common Usage Patterns
 
 6. Combine Stability Test with History Generation
    --------------------------------------------
-   You can run both tests together:
+      You can run both tests together:
 
    python pick-treasury.py -t -y 5 -s -1
+
+8. Skip Specific Treasury Terms
+   ----------------------------
+   Skip specific treasury terms and test with remaining periods:
+
+   python pick-treasury.py --skip 1m --skip 3m
+   python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability
 
 Command Line Arguments
 =====================
@@ -67,6 +74,10 @@ Command Line Arguments
 
 -c, --comprehensive-stability
     Run comprehensive stability test across all possible year lengths
+
+--skip, -x TERM
+    Skip specific treasury terms (can be used multiple times, e.g., --skip 1m --skip 3m)
+    Valid terms: 1m, 3m, 6m, 1y, 2y
 
 -o, --output-file OUTPUT_FILE
     Output file for borrowing history (default: borrow-history.csv)

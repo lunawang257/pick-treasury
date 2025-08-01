@@ -560,20 +560,24 @@ def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
 
     return results
 
-def test_fixed_strategies(data: List[Dict]) -> Dict:
+def test_fixed_strategies(data: List[Dict], skip_terms: List[str] = None) -> Dict:
     """
     Test fixed strategies for each treasury period.
 
     Args:
         data: Treasury yield data
+        skip_terms: List of terms to skip (e.g., ['1m', '3m'])
 
     Returns:
         Dict: Results for fixed strategies
     """
     results = {}
 
+    # Get filtered treasury periods
+    filtered_periods = get_filtered_treasury_periods(skip_terms)
+
     # Check which treasury periods have sufficient data
-    available_periods = [period for period in TREASURY_PERIODS
+    available_periods = [period for period in filtered_periods
                         if check_data_availability(data, period)]
 
     if len(available_periods) < 2:
@@ -598,6 +602,42 @@ def test_fixed_strategies(data: List[Dict]) -> Dict:
 
     return results
 
+def convert_skip_to_periods(skip_terms: List[str]) -> List[str]:
+    """
+    Convert skip parameters to treasury period names.
+
+    Args:
+        skip_terms: List of skip terms (e.g., ['1m', '3m'])
+
+    Returns:
+        List[str]: List of treasury period names to skip
+    """
+    skip_mapping = {
+        '1m': '1 Mo',
+        '3m': '3 Mo',
+        '6m': '6 Mo',
+        '1y': '1 Yr',
+        '2y': '2 Yr'
+    }
+
+    return [skip_mapping.get(term.lower(), term) for term in skip_terms]
+
+def get_filtered_treasury_periods(skip_terms: List[str] = None) -> List[str]:
+    """
+    Get treasury periods after filtering out skipped terms.
+
+    Args:
+        skip_terms: List of terms to skip (e.g., ['1m', '3m'])
+
+    Returns:
+        List[str]: Filtered list of treasury periods
+    """
+    if not skip_terms:
+        return TREASURY_PERIODS.copy()
+
+    skip_periods = convert_skip_to_periods(skip_terms)
+    return [period for period in TREASURY_PERIODS if period not in skip_periods]
+
 def check_data_availability(data: List[Dict], period: str) -> bool:
     """
     Check if a treasury period has sufficient data available.
@@ -620,7 +660,7 @@ def check_data_availability(data: List[Dict], period: str) -> bool:
     return valid_count >= min_required
 
 def backtest_strategies(
-    data: List[Dict], pick_thresholds: List[float] = None
+    data: List[Dict], pick_thresholds: List[float] = None, skip_terms: List[str] = None
 ) -> Dict:
     """
     Backtest different treasury selection strategies.
@@ -628,6 +668,7 @@ def backtest_strategies(
     Args:
         data: List of dictionaries with treasury yield data
         pick_thresholds: List of pick thresholds to test
+        skip_terms: List of terms to skip (e.g., ['1m', '3m'])
 
     Returns:
         Dict: Results for all strategy combinations
@@ -638,8 +679,15 @@ def backtest_strategies(
     pick_methods = ["pick_high", "pick_low", "use_threshold"]
     results = {}
 
+    # Get filtered treasury periods
+    filtered_periods = get_filtered_treasury_periods(skip_terms)
+
+    if skip_terms:
+        print(f"Skipping treasury periods: {convert_skip_to_periods(skip_terms)}")
+        print(f"Using treasury periods: {filtered_periods}")
+
     # Check which treasury periods have sufficient data
-    available_periods = [period for period in TREASURY_PERIODS
+    available_periods = [period for period in filtered_periods
                         if check_data_availability(data, period)]
 
     print(f"Available treasury periods: {available_periods}")
@@ -657,7 +705,7 @@ def backtest_strategies(
                 results.update(combination_results)
 
     # Test fixed strategies (only for available periods)
-    fixed_results = test_fixed_strategies(data)
+    fixed_results = test_fixed_strategies(data, skip_terms)
     results.update(fixed_results)
 
     return results
@@ -1004,13 +1052,14 @@ def write_strategy_history(data: List[Dict], strategy_name: str,
         print(f"  Failed to generate history for strategy {strategy_name}")
         return False
 
-def test_strategy_stability(data: List[Dict], n_years: int = 5) -> Dict:
+def test_strategy_stability(data: List[Dict], n_years: int = 5, skip_terms: List[str] = None) -> Dict:
     """
     Test the stability of each strategy by running backtests on rolling N-year periods.
 
     Args:
         data: List of dictionaries with treasury yield data
         n_years: Number of years for each rolling period (default: 5)
+        skip_terms: List of terms to skip (e.g., ['1m', '3m'])
 
     Returns:
         Dict: Stability results with mean and standard deviation of ranks for each strategy
@@ -1045,7 +1094,7 @@ def test_strategy_stability(data: List[Dict], n_years: int = 5) -> Dict:
 
         # Run backtest for this period
         try:
-            period_results = backtest_strategies(period_data)
+            period_results = backtest_strategies(period_data, skip_terms=skip_terms)
 
             if not period_results:
                 if period_idx < 3:
@@ -1144,12 +1193,13 @@ def print_stability_results(stability_results: Dict):
     print("-" * 120)
     print(f"Total strategies analyzed: {len(sorted_results)}")
 
-def test_comprehensive_stability(data: List[Dict]) -> Dict:
+def test_comprehensive_stability(data: List[Dict], skip_terms: List[str] = None) -> Dict:
     """
     Test strategy stability across all possible year lengths and aggregate results.
 
     Args:
         data: List of dictionaries with treasury yield data
+        skip_terms: List of terms to skip (e.g., ['1m', '3m'])
 
     Returns:
         Dict: Comprehensive stability results with aggregated statistics
@@ -1187,7 +1237,7 @@ def test_comprehensive_stability(data: List[Dict]) -> Dict:
 
             # Run backtest for this period
             try:
-                period_results = backtest_strategies(period_data)
+                period_results = backtest_strategies(period_data, skip_terms=skip_terms)
 
                 if not period_results:
                     continue
@@ -1319,6 +1369,12 @@ def main():
         action='store_true',
         help='Run comprehensive stability test across all possible year lengths'
     )
+    parser.add_argument(
+        '--skip', '-x',
+        action='append',
+        choices=['1m', '3m', '6m', '1y', '2y'],
+        help='Skip specific treasury terms (can be used multiple times, e.g., --skip 1m --skip 3m)'
+    )
     args = parser.parse_args()
 
     print("Treasury Bill Selection Strategy Backtester")
@@ -1368,7 +1424,7 @@ def main():
 
     # Run backtest
     print("\nRunning backtest...")
-    results = backtest_strategies(data)
+    results = backtest_strategies(data, skip_terms=args.skip)
 
     # Find and display best strategy
     best_strategy_name, best_strategy_data = find_best_strategy(results)
@@ -1485,7 +1541,7 @@ def main():
         print("\n" + "=" * 50)
         print(f"Testing Strategy Stability ({args.stability_years}-year rolling periods)...")
         print("=" * 50)
-        stability_results = test_strategy_stability(data, n_years=args.stability_years)
+        stability_results = test_strategy_stability(data, n_years=args.stability_years, skip_terms=args.skip)
         print_stability_results(stability_results)
 
     # Test comprehensive stability if requested
@@ -1493,7 +1549,7 @@ def main():
         print("\n" + "=" * 50)
         print("Testing Comprehensive Strategy Stability across all year lengths...")
         print("=" * 50)
-        comprehensive_results = test_comprehensive_stability(data)
+        comprehensive_results = test_comprehensive_stability(data, skip_terms=args.skip)
         print_comprehensive_stability_results(comprehensive_results)
 
 if __name__ == "__main__":
