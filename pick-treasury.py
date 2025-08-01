@@ -1101,6 +1101,133 @@ def print_stability_results(stability_results: Dict):
     print("-" * 120)
     print(f"Total strategies analyzed: {len(sorted_results)}")
 
+def test_comprehensive_stability(data: List[Dict]) -> Dict:
+    """
+    Test strategy stability across all possible year lengths and aggregate results.
+
+    Args:
+        data: List of dictionaries with treasury yield data
+
+    Returns:
+        Dict: Comprehensive stability results with aggregated statistics
+    """
+    print("Running comprehensive stability test across all possible year lengths...")
+
+    # Calculate maximum possible years (need at least 12 months per period)
+    max_years = len(data) // 12
+    print(f"Data spans {len(data)} months, testing year lengths from 4 to {max_years}")
+
+    # Store all ranks for each strategy across all year lengths
+    strategy_all_ranks = {}
+
+    for n_years in range(4, max_years + 1):
+        print(f"\nTesting {n_years}-year periods...")
+
+        # Calculate number of rolling periods for this year length
+        months_per_period = n_years * 12
+        num_periods = len(data) - months_per_period + 1
+
+        if num_periods < 2:
+            print(f"  Skipping {n_years}-year periods (only {num_periods} periods available)")
+            continue
+
+        print(f"  Running {num_periods} rolling {n_years}-year periods...")
+
+        # Store ranks for this year length
+        strategy_ranks = {}
+
+        for period_idx in range(num_periods):
+            # Extract data for this period
+            start_idx = period_idx
+            end_idx = period_idx + months_per_period
+            period_data = data[start_idx:end_idx]
+
+            # Run backtest for this period
+            try:
+                period_results = backtest_strategies(period_data)
+
+                if not period_results:
+                    continue
+
+                # Sort strategies by total_cost (lower is better) and assign ranks
+                sorted_strategies = sorted(period_results.items(), key=lambda x: x[1]['total_cost'])
+
+                # Assign ranks (1 is best, higher numbers are worse)
+                for rank, (strategy_name, strategy_data) in enumerate(sorted_strategies, 1):
+                    if strategy_name not in strategy_ranks:
+                        strategy_ranks[strategy_name] = []
+
+                    strategy_ranks[strategy_name].append(rank)
+
+            except Exception as e:
+                print(f"    Error in period {period_idx + 1}: {e}")
+                continue
+
+        # Aggregate results for this year length
+        for strategy_name, ranks in strategy_ranks.items():
+            if len(ranks) < 2:
+                continue  # Skip strategies with insufficient data
+
+            if strategy_name not in strategy_all_ranks:
+                strategy_all_ranks[strategy_name] = []
+
+            # Add all ranks from this year length to the overall collection
+            strategy_all_ranks[strategy_name].extend(ranks)
+
+    # Calculate comprehensive statistics for each strategy
+    comprehensive_results = {}
+
+    for strategy_name, all_ranks in strategy_all_ranks.items():
+        if len(all_ranks) < 10:  # Require at least 10 total periods
+            continue
+
+        mean_rank = statistics.mean(all_ranks)
+        stdev_rank = statistics.stdev(all_ranks) if len(all_ranks) > 1 else 0
+
+        comprehensive_results[strategy_name] = {
+            'name': strategy_name,
+            'mean_rank': mean_rank,
+            'stdev_rank': stdev_rank,
+            'num_periods': len(all_ranks),
+            'min_rank': min(all_ranks),
+            'max_rank': max(all_ranks),
+            'total_tests': len(all_ranks)
+        }
+
+    return comprehensive_results
+
+def print_comprehensive_stability_results(comprehensive_results: Dict):
+    """
+    Print comprehensive stability results sorted by mean rank.
+
+    Args:
+        comprehensive_results: Results from test_comprehensive_stability
+    """
+    if not comprehensive_results:
+        print("No comprehensive stability results to display.")
+        return
+
+    # Sort by mean rank (lower is better)
+    sorted_results = sorted(comprehensive_results.items(), key=lambda x: x[1]['mean_rank'])
+
+    print(f"\nComprehensive Strategy Stability Results (all year lengths, sorted by mean rank):")
+    print("=" * 130)
+    print(f"{'Strategy Name':<50} {'Mean':<6} {'StDev':<6} {'Min':<4} {'Max':<4} {'Total':<6}")
+    print("-" * 130)
+
+    for strategy_name, strategy_data in sorted_results:
+        mean_rank = strategy_data['mean_rank']
+        stdev_rank = strategy_data['stdev_rank']
+        min_rank = strategy_data['min_rank']
+        max_rank = strategy_data['max_rank']
+        total_tests = strategy_data['total_tests']
+
+        print(f"{strategy_name:<50} {mean_rank:<6.1f} {stdev_rank:<6.1f} {min_rank:<4} {max_rank:<4} {total_tests:<6}")
+
+    print("-" * 130)
+    print(f"Total strategies analyzed: {len(sorted_results)}")
+    print(f"Results aggregated across all year lengths (4 to maximum possible)")
+
 def main():
     """
     Main function to run the treasury backtesting analysis.
@@ -1143,6 +1270,11 @@ def main():
         type=int,
         default=5,
         help='Number of years for stability test rolling periods (default: 5)'
+    )
+    parser.add_argument(
+        '--comprehensive-stability', '-c',
+        action='store_true',
+        help='Run comprehensive stability test across all possible year lengths'
     )
     args = parser.parse_args()
 
@@ -1312,6 +1444,14 @@ def main():
         print("=" * 50)
         stability_results = test_strategy_stability(data, n_years=args.stability_years)
         print_stability_results(stability_results)
+
+    # Test comprehensive stability if requested
+    if args.comprehensive_stability:
+        print("\n" + "=" * 50)
+        print("Testing Comprehensive Strategy Stability across all year lengths...")
+        print("=" * 50)
+        comprehensive_results = test_comprehensive_stability(data)
+        print_comprehensive_stability_results(comprehensive_results)
 
 if __name__ == "__main__":
     main()
