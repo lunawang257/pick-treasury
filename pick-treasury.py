@@ -1017,8 +1017,8 @@ def main():
                 # Generate detailed history
                 history_result = generate_strategy_history(data, strategy_name, strategy_data)
                 if history_result:
-                    # Create output filename
-                    output_filename = f"borrow-history-{strategy_id}.csv"
+                    # Create output filename with strategy name
+                    output_filename = f"borrow-history-{strategy_id}-{strategy_name}.csv"
                     print_borrowing_history(history_result, max_records=len(history_result['borrowing_history']),
                                          output_file=output_filename)
                 else:
@@ -1035,8 +1035,8 @@ def main():
                 # Generate detailed history
                 history_result = generate_strategy_history(data, strategy_name, strategy_data)
                 if history_result:
-                    # Create output filename
-                    output_filename = f"borrow-history-{args.strategy_id}.csv"
+                    # Create output filename with strategy name
+                    output_filename = f"borrow-history-{args.strategy_id}-{strategy_name}.csv"
                     print_borrowing_history(history_result, max_records=len(history_result['borrowing_history']),
                                          output_file=output_filename)
             else:
