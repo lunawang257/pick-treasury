@@ -461,6 +461,8 @@ def create_strategy_result(result: Dict, short_term: str, long_term: str,
         'avg_rate': result['avg_rate'],
         'annualized_compound_interest_cost': result.get('annualized_compound_interest_cost', 0),
         'annualized_rate': annualized_rate,
+        'compound_interest_cost': result.get('compound_interest_cost', 0),
+        'final_amount': result.get('final_amount', initial_amount),
         'total_periods': result['total_periods'],
         'long_term_choices': result['long_term_choices'],
         'short_term_choices': result['short_term_choices'],
@@ -512,9 +514,13 @@ def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
     if pick_method == "use_threshold":
         # For use_threshold, test all threshold values
         for threshold in pick_thresholds:
-            strategy_name = (
-                f"{short_term}_vs_{long_term}_{pick_method}_{threshold}"
-            )
+            # Create compact strategy name
+            short_compact = short_term.replace(' ', '')
+            long_compact = long_term.replace(' ', '')
+            if pick_method == "use_threshold":
+                strategy_name = f"{short_compact}_{long_compact}_thresh_{threshold}"
+            else:
+                strategy_name = f"{short_compact}_{long_compact}_{pick_method}"
             strategy_id = get_next_strategy_id()
 
             try:
@@ -528,7 +534,9 @@ def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
                 print(f"Error testing {strategy_name}: {e}")
     else:
         # For pick_high and pick_low, threshold doesn't matter
-        strategy_name = f"{short_term}_vs_{long_term}_{pick_method}"
+        short_compact = short_term.replace(' ', '')
+        long_compact = long_term.replace(' ', '')
+        strategy_name = f"{short_compact}_{long_compact}_{pick_method}"
         strategy_id = get_next_strategy_id()
 
         try:
@@ -555,7 +563,8 @@ def test_fixed_strategies(data: List[Dict]) -> Dict:
     results = {}
 
     for term in TREASURY_PERIODS:
-        strategy_name = f"fixed_{term}"
+        term_compact = term.replace(' ', '')
+        strategy_name = f"fixed_{term_compact}"
         strategy_id = get_next_strategy_id()
 
         try:
@@ -661,21 +670,16 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
     )
     print("-" * 130)
     print(
-        f"{'ID':<12} {'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
-        f"{'Final Amount':<15} {'Rate':<10} {'Long%':<8}"
+        f"{'Rank':<5} {'ID':<3} {'Strategy':<25} {'Rate':>5} {'Long%':>5}"
     )
-    print("-" * 130)
+    print("-" * 50)
 
     for i, (strategy_name, data) in enumerate(sorted_results[:top_n]):
-        annualized_cost = data['total_cost']
-        total_interest = data.get('compound_interest_cost', 0)
-        final_amount = data.get('final_amount', 0)
         strategy_id = data.get('strategy_id', 'N/A')
         rate = data.get('annualized_rate', 0)
         print(
-            f"{i}: {strategy_id:<12} {strategy_name:<40} ${annualized_cost:<14,.0f} "
-            f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
-            f"{rate:<9,.2f}% {data['long_term_pct']:<8.1f}"
+            f"{i+1:<5} {strategy_id:<3} {strategy_name:<25} "
+            f"{rate:>5.2f}% {data['long_term_pct']:>5.1f}%"
         )
 
     # Print worst strategies
@@ -686,22 +690,17 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
         )
         print("-" * 130)
         print(
-            f"{'ID':<12} {'Strategy':<40} {'Annualized Cost':<15} {'Total Interest':<15} "
-            f"{'Final Amount':<15} {'Rate':<10} {'Long%':<8}"
+            f"{'Rank':<5} {'ID':<3} {'Strategy':<25} {'Rate':>5} {'Long%':>5}"
         )
-        print("-" * 130)
+        print("-" * 50)
 
         for i, (strategy_name, data) in enumerate(sorted_results[-worst_n:]):
-            annualized_cost = data['total_cost']
-            total_interest = data.get('compound_interest_cost', 0)
-            final_amount = data.get('final_amount', 0)
             strategy_id = data.get('strategy_id', 'N/A')
             rate = data.get('annualized_rate', 0)
+            rank = len(sorted_results) - worst_n + i + 1
             print(
-                f"{len(sorted_results) - worst_n + i}: {strategy_id:<12} {strategy_name:<40} "
-                f"${annualized_cost:<14,.0f} "
-                f"${total_interest:<14,.0f} ${final_amount:<14,.0f} "
-                f"{rate:<9,.2f}% {data['long_term_pct']:<8.1f}"
+                f"{rank:<5} {strategy_id:<3} {strategy_name:<25} "
+                f"{rate:>5.2f}% {data['long_term_pct']:>5.1f}%"
             )
 
 def print_borrowing_history(result: Dict, max_records: int = 10,
