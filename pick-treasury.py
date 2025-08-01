@@ -9,6 +9,7 @@ import statistics
 RATE_SLIPPAGE = 0.3  # Default rate slippage in percentage points
 TREASURY_PERIODS = ['1 Mo', '3 Mo', '6 Mo', '1 Yr', '2 Yr']
 
+
 def is_third_friday(date_str: str) -> bool:
     """
     Check if a given date is the 3rd Friday of the month.
@@ -70,7 +71,7 @@ def write_filtered_data(data: List[Dict], output_file: str):
 def load_and_filter_data(csv_file: str) -> List[Dict]:
     """
     Load CSV data and filter for 3rd Friday of each month with specified
-    treasury periods. Only use data range where 1-month rates are available.
+    treasury periods. Use data range where any treasury periods are available.
 
     Args:
         csv_file: Path to the CSV file
@@ -110,21 +111,21 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
     # Sort by date
     filtered_data.sort(key=lambda x: x['Date'])
 
-    # Find the range where 1-month rates are available and data is complete
+    # Find the range where any treasury period data is available and data is complete
     start_idx = None
     end_idx = None
 
-    # First, find where 1-month data starts
+    # First, find where any treasury period data starts
     for i, data_point in enumerate(filtered_data):
-        if data_point['1 Mo'] is not None:
+        if any(data_point[period] is not None for period in TREASURY_PERIODS):
             start_idx = i
             break
 
     if start_idx is None:
-        print("Warning: No 1-month rate data found!")
+        print("Warning: No treasury rate data found!")
         return []
 
-    # Find the longest continuous range where all required periods have data
+    # Find the longest continuous range where at least some treasury periods have data
     best_start = start_idx
     best_end = start_idx
     current_start = start_idx
@@ -132,12 +133,12 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
     for i in range(start_idx, len(filtered_data)):
         data_point = filtered_data[i]
 
-        # Check if this data point has all required periods
-        has_all_data = all(
+        # Check if this data point has at least some treasury period data
+        has_some_data = any(
             data_point[period] is not None for period in TREASURY_PERIODS
         )
 
-        if has_all_data:
+        if has_some_data:
             # Continue the current range
             current_end = i
         else:
@@ -149,7 +150,7 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
             # Look for next valid starting point
             current_start = None
             for j in range(i + 1, len(filtered_data)):
-                if all(
+                if any(
                     filtered_data[j][period] is not None
                     for period in TREASURY_PERIODS
                 ):
@@ -571,20 +572,52 @@ def test_fixed_strategies(data: List[Dict]) -> Dict:
     """
     results = {}
 
-    for term in TREASURY_PERIODS:
+    # Check which treasury periods have sufficient data
+    available_periods = [period for period in TREASURY_PERIODS
+                        if check_data_availability(data, period)]
+
+    if len(available_periods) < 2:
+        return results
+
+    # Use the first two available periods for comparison
+    short_term = available_periods[0]
+    long_term = available_periods[1]
+
+    for term in available_periods:
         term_compact = term.replace(' ', '')
         strategy_name = f"fixed_{term_compact}"
         strategy_id = get_next_strategy_id()
 
         try:
-            result = CmpBorrow(data, '1 Mo', '3 Mo', 0.0, fixed_term=term)
+            result = CmpBorrow(data, short_term, long_term, 0.0, fixed_term=term)
             results[strategy_name] = create_strategy_result(
-                result, '1 Mo', '3 Mo', 0.0, 'fixed', fixed_term=term,
+                result, short_term, long_term, 0.0, 'fixed', fixed_term=term,
                 strategy_id=strategy_id)
         except Exception as e:
             print(f"Error testing {strategy_name}: {e}")
 
     return results
+
+def check_data_availability(data: List[Dict], period: str) -> bool:
+    """
+    Check if a treasury period has sufficient data available.
+
+    Args:
+        data: List of dictionaries with treasury yield data
+        period: Treasury period to check (e.g., '1 Mo', '3 Mo')
+
+    Returns:
+        bool: True if period has sufficient data, False otherwise
+    """
+    if not data:
+        return False
+
+    # Count how many data points have valid rates for this period
+    valid_count = sum(1 for row in data if row.get(period) is not None)
+
+    # Require at least 10% of data points to have valid rates
+    min_required = max(10, len(data) * 0.1)
+    return valid_count >= min_required
 
 def backtest_strategies(
     data: List[Dict], pick_thresholds: List[float] = None
@@ -605,15 +638,25 @@ def backtest_strategies(
     pick_methods = ["pick_high", "pick_low", "use_threshold"]
     results = {}
 
-    # Test all combinations of short and long terms
-    for i, short_term in enumerate(TREASURY_PERIODS[:-1]):
-        for long_term in TREASURY_PERIODS[i+1:]:
+    # Check which treasury periods have sufficient data
+    available_periods = [period for period in TREASURY_PERIODS
+                        if check_data_availability(data, period)]
+
+    print(f"Available treasury periods: {available_periods}")
+
+    if len(available_periods) < 2:
+        print("Warning: Need at least 2 treasury periods with data to run backtests")
+        return results
+
+    # Test all combinations of short and long terms (only for available periods)
+    for i, short_term in enumerate(available_periods[:-1]):
+        for long_term in available_periods[i+1:]:
             for pick_method in pick_methods:
                 combination_results = test_strategy_combination(
                     data, short_term, long_term, pick_method, pick_thresholds)
                 results.update(combination_results)
 
-    # Test fixed strategies
+    # Test fixed strategies (only for available periods)
     fixed_results = test_fixed_strategies(data)
     results.update(fixed_results)
 

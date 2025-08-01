@@ -112,5 +112,6 @@ The program requires a CSV file named "yield-curve-rates-1990-2024.csv" with col
 - Date (MM/DD/YY format)
 - 1 Mo, 3 Mo, 6 Mo, 1 Yr, 2 Yr (treasury rates)
 
-The program filters for 3rd Friday of each month and uses the complete data range
-where all treasury periods have available data.
+The program filters for 3rd Friday of each month and automatically detects which
+treasury periods have sufficient data available. It will work with any combination
+of available periods, not requiring all periods to be present.
