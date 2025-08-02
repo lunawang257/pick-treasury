@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import csv
 import argparse
 from datetime import datetime, timedelta
@@ -183,7 +185,8 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
               pick_threshold: float, rate_slippage: float = RATE_SLIPPAGE,
               initial_amount: float = 1000000.0,
               pick_method: str = "use_threshold",
-              fixed_term: str = None, skip_terms: List[str] = None) -> Dict:
+              fixed_term: str = None, skip_terms: List[str] = None,
+              suppress_warnings: bool = False) -> Dict:
     """
     Compare two money borrowing strategies using compound interest
     simulation.
@@ -263,7 +266,7 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
             if long_rate is None and long_term not in skipped_periods:
                 missing_terms.append(f"{long_term}: {long_rate}")
 
-            if missing_terms:
+            if missing_terms and not suppress_warnings:
                 print(
                     f"Warning: Missing data on {current_date.strftime('%Y-%m-%d')}"
                     f" - {', '.join(missing_terms)}"
@@ -272,11 +275,12 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
             continue
 
         if short_rate > 50 or long_rate > 50:
-            print(
-                f"Warning: Suspiciously high rates on "
-                f"{current_date.strftime('%Y-%m-%d')} - "
-                f"{short_term}: {short_rate}, {long_term}: {long_rate}"
-            )
+            if not suppress_warnings:
+                print(
+                    f"Warning: Suspiciously high rates on "
+                    f"{current_date.strftime('%Y-%m-%d')} - "
+                    f"{short_term}: {short_rate}, {long_term}: {long_rate}"
+                )
 
         # Determine strategy decision based on pick_method or fixed_term
         if fixed_term is not None:
@@ -549,7 +553,8 @@ def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
             try:
                 result = CmpBorrow(
                     data, short_term, long_term, threshold,
-                    pick_method=pick_method, skip_terms=skip_terms)
+                    pick_method=pick_method, skip_terms=skip_terms,
+                    suppress_warnings=True)
                 results[strategy_name] = create_strategy_result(
                     result, short_term, long_term, threshold, pick_method,
                     strategy_id=strategy_id)
@@ -564,7 +569,8 @@ def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
 
         try:
             result = CmpBorrow(data, short_term, long_term, 0.0,
-                               pick_method=pick_method, skip_terms=skip_terms)
+                               pick_method=pick_method, skip_terms=skip_terms,
+                               suppress_warnings=True)
             results[strategy_name] = create_strategy_result(
                 result, short_term, long_term, 0.0, pick_method,
                 strategy_id=strategy_id)
@@ -606,7 +612,8 @@ def test_fixed_strategies(data: List[Dict], skip_terms: List[str] = None) -> Dic
         strategy_id = get_next_strategy_id()
 
         try:
-            result = CmpBorrow(data, short_term, long_term, 0.0, fixed_term=term, skip_terms=skip_terms)
+            result = CmpBorrow(data, short_term, long_term, 0.0, fixed_term=term, skip_terms=skip_terms,
+                              suppress_warnings=True)
             results[strategy_name] = create_strategy_result(
                 result, short_term, long_term, 0.0, 'fixed', fixed_term=term,
                 strategy_id=strategy_id)
@@ -797,7 +804,7 @@ def print_results(results: Dict, top_n: int = 10, worst_n: int = 5):
     )
     print("-" * 130)
     print(
-        f"{'Rank':<5} {'ID':<3} {'Strategy':<25} {'Rate':>5} {'Long%':>5}"
+        f"{'Rank':<5} {'ID':<3} {'Strategy':<25}  {'Rate%':>5}  {'Long%':>5}"
     )
     print("-" * 50)
 
@@ -997,7 +1004,8 @@ def print_strategy_summary(result: Dict, strategy_name: str = ""):
 
 def run_single_strategy(data: List[Dict], short_term: str, long_term: str,
                         threshold: float, pick_method: str,
-                        fixed_term: str = None, skip_terms: List[str] = None) -> Dict:
+                        fixed_term: str = None, skip_terms: List[str] = None,
+                        suppress_warnings: bool = False) -> Dict:
     """
     Run a single strategy and return results.
 
@@ -1015,7 +1023,8 @@ def run_single_strategy(data: List[Dict], short_term: str, long_term: str,
     """
     try:
         return CmpBorrow(data, short_term, long_term, threshold,
-                        pick_method=pick_method, fixed_term=fixed_term, skip_terms=skip_terms)
+                        pick_method=pick_method, fixed_term=fixed_term, skip_terms=skip_terms,
+                        suppress_warnings=suppress_warnings)
     except Exception as e:
         print(f"Error with {pick_method} (threshold {threshold}): {e}")
         return None
@@ -1042,7 +1051,8 @@ def generate_strategy_history(data: List[Dict], strategy_name: str,
         fixed_term = strategy_data.get('fixed_term')
 
         return CmpBorrow(data, short_term, long_term, pick_threshold,
-                        pick_method=pick_method, fixed_term=fixed_term, skip_terms=skip_terms)
+                        pick_method=pick_method, fixed_term=fixed_term, skip_terms=skip_terms,
+                        suppress_warnings=False)
     except Exception as e:
         print(f"Error generating history for strategy {strategy_name}: {e}")
         return None
@@ -1498,7 +1508,8 @@ def main():
                 best_strategy_data['long_term'],
                 best_strategy_data['pick_threshold'],
                 best_strategy_data.get('pick_method', 'use_threshold'),
-                skip_terms=args.skip
+                skip_terms=args.skip,
+                suppress_warnings=True
             )
             if best_result:
                 print_borrowing_history(best_result, max_records=10,
@@ -1549,7 +1560,7 @@ def main():
 
     # Test pick_high and pick_low
     for pick_method in ["pick_high", "pick_low"]:
-        result = run_single_strategy(data, '1 Mo', '3 Mo', 0.0, pick_method, skip_terms=args.skip)
+        result = run_single_strategy(data, '1 Mo', '3 Mo', 0.0, pick_method, skip_terms=args.skip, suppress_warnings=True)
         if result:
             print_strategy_summary(result, pick_method)
 
@@ -1557,7 +1568,7 @@ def main():
     print("\nThreshold-based strategies:")
     for threshold in [0.0, 0.1, 0.2, 0.3, 0.5]:
         result = run_single_strategy(data, '1 Mo', '3 Mo', threshold,
-                                     "use_threshold", skip_terms=args.skip)
+                                     "use_threshold", skip_terms=args.skip, suppress_warnings=True)
         if result:
             print_strategy_summary(
                 result, f"use_threshold (threshold {threshold})")
@@ -1566,7 +1577,7 @@ def main():
     print("\nFixed strategies:")
     for term in TREASURY_PERIODS:
         result = run_single_strategy(data, '1 Mo', '3 Mo', 0.0,
-                                     'fixed', fixed_term=term, skip_terms=args.skip)
+                                     'fixed', fixed_term=term, skip_terms=args.skip, suppress_warnings=True)
         if result:
             print_strategy_summary(result, f"fixed_{term}")
 
