@@ -113,7 +113,8 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
     # Sort by date
     filtered_data.sort(key=lambda x: x['Date'])
 
-    # Find the range where any treasury period data is available and data is complete
+    # Find the range where any treasury period data
+    # is available and data is complete
     start_idx = None
     end_idx = None
 
@@ -127,7 +128,8 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
         print("Warning: No treasury rate data found!")
         return []
 
-    # Find the longest continuous range where at least some treasury periods have data
+    # Find the longest continuous range where at least some treasury
+    # periods have data
     best_start = start_idx
     best_end = start_idx
     current_start = start_idx
@@ -255,9 +257,11 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
         long_rate = row[long_term]
 
         # Get skipped periods for comparison
-        skipped_periods = convert_skip_to_periods(skip_terms) if skip_terms else []
+        skipped_periods = convert_skip_to_periods(skip_terms) \
+            if skip_terms else []
 
-        # Report and skip if we don't have valid rates (but don't warn for skipped terms)
+        # Report and skip if we don't have valid rates
+        # (but don't warn for skipped terms)
         if short_rate is None or long_rate is None:
             # Only warn if the missing rate is not in the skipped terms
             missing_terms = []
@@ -268,7 +272,8 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
 
             if missing_terms and not suppress_warnings:
                 print(
-                    f"Warning: Missing data on {current_date.strftime('%Y-%m-%d')}"
+                    f"Warning: Missing data on"
+                    f" {current_date.strftime('%Y-%m-%d')}"
                     f" - {', '.join(missing_terms)}"
                 )
             i += 1
@@ -520,7 +525,8 @@ def reset_strategy_id_counter():
 
 def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
                               pick_method: str,
-                              pick_thresholds: List[float], skip_terms: List[str] = None) -> Dict:
+                              pick_thresholds: List[float],
+                              skip_terms: List[str] = None) -> Dict:
     """
     Test a specific combination of short and long terms with a pick method.
 
@@ -579,7 +585,8 @@ def test_strategy_combination(data: List[Dict], short_term: str, long_term: str,
 
     return results
 
-def test_fixed_strategies(data: List[Dict], skip_terms: List[str] = None) -> Dict:
+def test_fixed_strategies(data: List[Dict],
+                          skip_terms: List[str] = None) -> Dict:
     """
     Test fixed strategies for each treasury period.
 
@@ -612,8 +619,9 @@ def test_fixed_strategies(data: List[Dict], skip_terms: List[str] = None) -> Dic
         strategy_id = get_next_strategy_id()
 
         try:
-            result = CmpBorrow(data, short_term, long_term, 0.0, fixed_term=term, skip_terms=skip_terms,
-                              suppress_warnings=True)
+            result = CmpBorrow(data, short_term, long_term, 0.0,
+                               fixed_term=term, skip_terms=skip_terms,
+                               suppress_warnings=True)
             results[strategy_name] = create_strategy_result(
                 result, short_term, long_term, 0.0, 'fixed', fixed_term=term,
                 strategy_id=strategy_id)
@@ -650,6 +658,8 @@ def reset_skip_info_flag():
         delattr(backtest_strategies, '_skip_info_printed')
     if hasattr(backtest_strategies, '_available_periods_printed'):
         delattr(backtest_strategies, '_available_periods_printed')
+    if hasattr(find_common_data_range, '_info_printed'):
+        delattr(find_common_data_range, '_info_printed')
 
 def get_filtered_treasury_periods(skip_terms: List[str] = None) -> List[str]:
     """
@@ -688,9 +698,39 @@ def check_data_availability(data: List[Dict], period: str) -> bool:
     min_required = max(10, len(data) * 0.1)
     return valid_count >= min_required
 
+def find_common_data_range(data: List[Dict], required_periods: List[str]) -> List[Dict]:
+    """
+    Find the data range where all required treasury periods have data.
+
+    Args:
+        data: List of dictionaries with treasury yield data
+        required_periods: List of treasury periods that must have data
+
+    Returns:
+        List[Dict]: Filtered data where all required periods have data
+    """
+    if not data or not required_periods:
+        return data
+
+    # Find data points where ALL required periods have data
+    filtered_data = []
+    for row in data:
+        if all(row.get(period) is not None for period in required_periods):
+            filtered_data.append(row)
+
+    # Only print information once per run
+    if filtered_data and not hasattr(find_common_data_range, '_info_printed'):
+        start_date = filtered_data[0]['Date'].strftime('%Y-%m-%d')
+        end_date = filtered_data[-1]['Date'].strftime('%Y-%m-%d')
+        print(f"Common data range for all strategies: {start_date} to {end_date}")
+        print(f"Total months with complete data: {len(filtered_data)}")
+        find_common_data_range._info_printed = True
+
+    return filtered_data
+
 def backtest_strategies(
-    data: List[Dict], pick_thresholds: List[float] = None, skip_terms: List[str] = None
-) -> Dict:
+    data: List[Dict], pick_thresholds: List[float] = None,
+    skip_terms: List[str] = None) -> Dict:
     """
     Backtest different treasury selection strategies.
 
@@ -713,7 +753,8 @@ def backtest_strategies(
 
     # Print skip information only once per run
     if skip_terms and not hasattr(backtest_strategies, '_skip_info_printed'):
-        print(f"Skipping treasury periods: {convert_skip_to_periods(skip_terms)}")
+        print(f"Skipping treasury periods:"
+              f" {convert_skip_to_periods(skip_terms)}")
         print(f"Using treasury periods: {filtered_periods}")
         backtest_strategies._skip_info_printed = True
 
@@ -727,7 +768,15 @@ def backtest_strategies(
         backtest_strategies._available_periods_printed = True
 
     if len(available_periods) < 2:
-        print("Warning: Need at least 2 treasury periods with data to run backtests")
+        print("Warning: Need at least 2 treasury periods with data"
+              " to run backtests")
+        return results
+
+    # Find common data range where all available periods have data
+    common_data = find_common_data_range(data, available_periods)
+
+    if not common_data:
+        print("Warning: No common data range found for all strategies")
         return results
 
     # Test all combinations of short and long terms (only for available periods)
@@ -735,11 +784,12 @@ def backtest_strategies(
         for long_term in available_periods[i+1:]:
             for pick_method in pick_methods:
                 combination_results = test_strategy_combination(
-                    data, short_term, long_term, pick_method, pick_thresholds, skip_terms)
+                    common_data, short_term, long_term, pick_method, pick_thresholds,
+                    skip_terms)
                 results.update(combination_results)
 
     # Test fixed strategies (only for available periods)
-    fixed_results = test_fixed_strategies(data, skip_terms)
+    fixed_results = test_fixed_strategies(common_data, skip_terms)
     results.update(fixed_results)
 
     return results
@@ -933,29 +983,28 @@ def print_borrowing_history(result: Dict, max_records: int = 10,
     if output_file:
         try:
             with open(output_file, 'w', newline='') as file:
-                if history_data:
-                    # Write header
-                    fieldnames = ['Date', 'Strategy', 'Treasury_Rate',
-                                  'Actual_Rate', 'Duration',
-                                  'Principal', 'Interest', 'New_Principal']
-                    writer = csv.DictWriter(file, fieldnames=fieldnames,
-                                            delimiter='\t')
-                    writer.writeheader()
+                # Write header
+                fieldnames = ['Date', 'Strategy', 'Treasury_Rate',
+                              'Actual_Rate', 'Duration',
+                              'Principal', 'Interest', 'New_Principal']
+                writer = csv.DictWriter(file, fieldnames=fieldnames,
+                                        delimiter='\t')
+                writer.writeheader()
 
-                    # Write all records
-                    for record in result['borrowing_history']:
-                        date_str = record['borrow_date'].strftime('%Y-%m-%d')
-                        writer.writerow({
-                            'Date': date_str,
-                            'Strategy': record['strategy'],
-                            'Treasury_Rate': f"{record['treasury_rate']:.2f}",
-                            'Actual_Rate': f"{record['actual_rate']:.2f}",
-                            'Duration': f"{record['duration_months']}mo",
-                            'Principal': f"{record['principal_at_start']:,.0f}",
-                            'Interest': f"{record['interest_paid']:,.0f}",
-                            'New_Principal':
-                                 f"{record['principal_at_end']:,.0f}"
-                        })
+                # Write all records
+                for record in result['borrowing_history']:
+                    date_str = record['borrow_date'].strftime('%Y-%m-%d')
+                    writer.writerow({
+                        'Date': date_str,
+                        'Strategy': record['strategy'],
+                        'Treasury_Rate': f"{record['treasury_rate']:.2f}",
+                        'Actual_Rate': f"{record['actual_rate']:.2f}",
+                        'Duration': f"{record['duration_months']}mo",
+                        'Principal': f"{record['principal_at_start']:,.0f}",
+                        'Interest': f"{record['interest_paid']:,.0f}",
+                        'New_Principal':
+                             f"{record['principal_at_end']:,.0f}"
+                    })
             print(f"\nBorrowing history written to: {output_file}")
         except Exception as e:
             print(f"Error writing to file {output_file}: {e}")
@@ -1023,14 +1072,16 @@ def run_single_strategy(data: List[Dict], short_term: str, long_term: str,
     """
     try:
         return CmpBorrow(data, short_term, long_term, threshold,
-                        pick_method=pick_method, fixed_term=fixed_term, skip_terms=skip_terms,
-                        suppress_warnings=suppress_warnings)
+                         pick_method=pick_method, fixed_term=fixed_term,
+                         skip_terms=skip_terms,
+                         suppress_warnings=suppress_warnings)
     except Exception as e:
         print(f"Error with {pick_method} (threshold {threshold}): {e}")
         return None
 
 def generate_strategy_history(data: List[Dict], strategy_name: str,
-                              strategy_data: Dict, skip_terms: List[str] = None) -> Dict:
+                              strategy_data: Dict, skip_terms: List[str] = None,
+                              suppress_warnings: bool = False) -> Dict:
     """
     Generate detailed borrowing history for a specific strategy.
 
@@ -1050,16 +1101,21 @@ def generate_strategy_history(data: List[Dict], strategy_name: str,
         pick_method = strategy_data['pick_method']
         fixed_term = strategy_data.get('fixed_term')
 
-        return CmpBorrow(data, short_term, long_term, pick_threshold,
-                        pick_method=pick_method, fixed_term=fixed_term, skip_terms=skip_terms,
-                        suppress_warnings=False)
+        result = CmpBorrow(data, short_term, long_term, pick_threshold,
+                           pick_method=pick_method, fixed_term=fixed_term,
+                           skip_terms=skip_terms,
+                           suppress_warnings=suppress_warnings)
+
+        return result
     except Exception as e:
         print(f"Error generating history for strategy {strategy_name}: {e}")
         return None
 
 def write_strategy_history(data: List[Dict], strategy_name: str,
                            strategy_data: Dict,
-                           strategy_id: str, skip_records: int = 0, skip_terms: List[str] = None) -> bool:
+                           strategy_id: str, skip_records: int = 0,
+                           skip_terms: List[str] = None,
+                           suppress_warnings: bool = True) -> bool:
     """
     Generate and write detailed borrowing history for a strategy to a CSV file.
 
@@ -1074,11 +1130,12 @@ def write_strategy_history(data: List[Dict], strategy_name: str,
     Returns:
         bool: True if successful, False otherwise
     """
-    print(f"\nProcessing Strategy ID {strategy_id}: {strategy_name}")
+    #print(f"\nProcessing Strategy ID {strategy_id}: {strategy_name}")
 
     # Generate detailed history
     history_result = generate_strategy_history(data, strategy_name,
-                                               strategy_data, skip_terms)
+                                               strategy_data, skip_terms,
+                                               suppress_warnings)
     if history_result:
         # Create output filename with strategy name
         output_filename = f"results/borrow-history" + \
@@ -1092,9 +1149,11 @@ def write_strategy_history(data: List[Dict], strategy_name: str,
         print(f"  Failed to generate history for strategy {strategy_name}")
         return False
 
-def test_strategy_stability(data: List[Dict], n_years: int = 5, skip_terms: List[str] = None) -> Dict:
+def test_strategy_stability(data: List[Dict], n_years: int = 5,
+                            skip_terms: List[str] = None) -> Dict:
     """
-    Test the stability of each strategy by running backtests on rolling N-year periods.
+    Test the stability of each strategy by running backtests on rolling N-year
+    periods.
 
     Args:
         data: List of dictionaries with treasury yield data
@@ -1102,18 +1161,21 @@ def test_strategy_stability(data: List[Dict], n_years: int = 5, skip_terms: List
         skip_terms: List of terms to skip (e.g., ['1m', '3m'])
 
     Returns:
-        Dict: Stability results with mean and standard deviation of ranks for each strategy
+        Dict: Stability results with mean and standard deviation of ranks for
+        each strategy
     """
     if len(data) < n_years * 12:  # Need at least N years of monthly data
         print(f"Warning: Not enough data for {n_years}-year stability test. "
-              f"Need at least {n_years * 12} months, but only have {len(data)} months.")
+              f"Need at least {n_years * 12} months, but only have"
+              f" {len(data)} months.")
         return {}
 
     # Calculate number of rolling periods
     months_per_period = n_years * 12
     num_periods = len(data) - months_per_period + 1
 
-    print(f"Testing strategy stability over {num_periods} rolling {n_years}-year periods...")
+    print(f"Testing strategy stability over"
+          f" {num_periods} rolling {n_years}-year periods...")
 
     # Store ranks for each strategy across all periods
     strategy_ranks = {}
@@ -1130,11 +1192,14 @@ def test_strategy_stability(data: List[Dict], n_years: int = 5, skip_terms: List
 
                 # Only print period info for first 3 periods
         if period_idx < 3:
-            print(f"Period {period_idx + 1}/{num_periods}: {start_date.strftime('%Y-%m')} to {end_date.strftime('%Y-%m')}")
+            print(f"Period {period_idx + 1}/{num_periods}:"
+                  f" {start_date.strftime('%Y-%m')} to"
+                  f" {end_date.strftime('%Y-%m')}")
 
         # Run backtest for this period
         try:
-            period_results = backtest_strategies(period_data, skip_terms=skip_terms)
+            period_results = backtest_strategies(
+                period_data, skip_terms=skip_terms)
 
             if not period_results:
                 if period_idx < 3:
@@ -1142,16 +1207,20 @@ def test_strategy_stability(data: List[Dict], n_years: int = 5, skip_terms: List
                 continue
 
             if period_idx < 3:
-                print(f"  Found {len(period_results)} strategies for period {period_idx + 1}")
+                print(f"  Found {len(period_results)} strategies for"
+                      f" period {period_idx + 1}")
 
             # Sort strategies by total_cost (lower is better) and assign ranks
-            sorted_strategies = sorted(period_results.items(), key=lambda x: x[1]['total_cost'])
+            sorted_strategies = sorted(period_results.items(),
+                                       key=lambda x: x[1]['total_cost'])
 
             # Assign ranks (1 is best, higher numbers are worse)
-            for rank, (strategy_name, strategy_data) in enumerate(sorted_strategies, 1):
+            for rank, (strategy_name, strategy_data) in \
+                enumerate(sorted_strategies, 1):
                 strategy_id = strategy_data.get('strategy_id', 'unknown')
 
-                # Use strategy name as key instead of ID since IDs change between periods
+                # Use strategy name as key instead of ID since IDs change
+                # between periods
                 if strategy_name not in strategy_ranks:
                     strategy_ranks[strategy_name] = {
                         'name': strategy_name,
@@ -1159,7 +1228,8 @@ def test_strategy_stability(data: List[Dict], n_years: int = 5, skip_terms: List
                         'short_term': strategy_data.get('short_term', ''),
                         'long_term': strategy_data.get('long_term', ''),
                         'pick_method': strategy_data.get('pick_method', ''),
-                        'pick_threshold': strategy_data.get('pick_threshold', 0.0),
+                        'pick_threshold':
+                            strategy_data.get('pick_threshold', 0.0),
                         'fixed_term': strategy_data.get('fixed_term', '')
                     }
 
@@ -1168,8 +1238,10 @@ def test_strategy_stability(data: List[Dict], n_years: int = 5, skip_terms: List
             # Debug: print first few strategies for this period
             if period_idx < 3:  # Only for first few periods
                 print(f"    Top 3 strategies for period {period_idx + 1}:")
-                for i, (name, strategy_data) in enumerate(sorted_strategies[:3]):
-                    print(f"      {i+1}. {name} (ID: {strategy_data.get('strategy_id', 'N/A')})")
+                for i, (name, strategy_data) in \
+                    enumerate(sorted_strategies[:3]):
+                    print(f"      {i+1}. {name} (ID:"
+                          f" {strategy_data.get('strategy_id', 'N/A')})")
 
         except Exception as e:
             print(f"  Error in period {period_idx + 1}: {e}")
@@ -1214,11 +1286,13 @@ def print_stability_results(stability_results: Dict):
         return
 
     # Sort by mean rank (lower is better)
-    sorted_results = sorted(stability_results.items(), key=lambda x: x[1]['mean_rank'])
+    sorted_results = sorted(stability_results.items(),
+                            key=lambda x: x[1]['mean_rank'])
 
     print(f"\nStrategy Stability Results (sorted by mean rank):")
     print("=" * 120)
-    print(f"{'Strategy Name':<50} {'Mean':<6} {'StDev':<6} {'Min':<4} {'Max':<4} {'Periods':<8}")
+    print(f"{'Strategy Name':<50} {'Mean':<6} {'StDev':<6} {'Min':<4}"
+          f" {'Max':<4} {'Periods':<8}")
     print("-" * 120)
 
     for strategy_name, strategy_data in sorted_results:
@@ -1228,14 +1302,17 @@ def print_stability_results(stability_results: Dict):
         max_rank = strategy_data['max_rank']
         num_periods = strategy_data['num_periods']
 
-        print(f"{strategy_name:<50} {mean_rank:<6.1f} {stdev_rank:<6.1f} {min_rank:<4} {max_rank:<4} {num_periods:<8}")
+        print(f"{strategy_name:<50} {mean_rank:<6.1f} {stdev_rank:<6.1f}"
+              f" {min_rank:<4} {max_rank:<4} {num_periods:<8}")
 
     print("-" * 120)
     print(f"Total strategies analyzed: {len(sorted_results)}")
 
-def test_comprehensive_stability(data: List[Dict], skip_terms: List[str] = None) -> Dict:
+def test_comprehensive_stability(data: List[Dict],
+                                 skip_terms: List[str] = None) -> Dict:
     """
-    Test strategy stability across all possible year lengths and aggregate results.
+    Test strategy stability across all possible year lengths and aggregate
+    results.
 
     Args:
         data: List of dictionaries with treasury yield data
@@ -1244,11 +1321,13 @@ def test_comprehensive_stability(data: List[Dict], skip_terms: List[str] = None)
     Returns:
         Dict: Comprehensive stability results with aggregated statistics
     """
-    print("Running comprehensive stability test across all possible year lengths...")
+    print("Running comprehensive stability test across all possible"
+          " year lengths...")
 
     # Calculate maximum possible years (need at least 12 months per period)
     max_years = len(data) // 12
-    print(f"Data spans {len(data)} months, testing year lengths from 4 to {max_years}")
+    print(f"Data spans {len(data)} months, testing year lengths from 4 to"
+          f" {max_years}")
 
     # Store all ranks for each strategy across all year lengths
     strategy_all_ranks = {}
@@ -1261,7 +1340,8 @@ def test_comprehensive_stability(data: List[Dict], skip_terms: List[str] = None)
         num_periods = len(data) - months_per_period + 1
 
         if num_periods < 2:
-            print(f"  Skipping {n_years}-year periods (only {num_periods} periods available)")
+            print(f"  Skipping {n_years}-year periods"
+                  f" (only {num_periods} periods available)")
             continue
 
         print(f"  Running {num_periods} rolling {n_years}-year periods...")
@@ -1277,16 +1357,20 @@ def test_comprehensive_stability(data: List[Dict], skip_terms: List[str] = None)
 
             # Run backtest for this period
             try:
-                period_results = backtest_strategies(period_data, skip_terms=skip_terms)
+                period_results = backtest_strategies(period_data,
+                                                     skip_terms=skip_terms)
 
                 if not period_results:
                     continue
 
-                # Sort strategies by total_cost (lower is better) and assign ranks
-                sorted_strategies = sorted(period_results.items(), key=lambda x: x[1]['total_cost'])
+                # Sort strategies by total_cost (lower is better) and
+                # assign ranks
+                sorted_strategies = sorted(period_results.items(),
+                                           key=lambda x: x[1]['total_cost'])
 
                 # Assign ranks (1 is best, higher numbers are worse)
-                for rank, (strategy_name, strategy_data) in enumerate(sorted_strategies, 1):
+                for rank, (strategy_name, strategy_data) in \
+                    enumerate(sorted_strategies, 1):
                     if strategy_name not in strategy_ranks:
                         strategy_ranks[strategy_name] = []
 
@@ -1341,11 +1425,14 @@ def print_comprehensive_stability_results(comprehensive_results: Dict):
         return
 
     # Sort by mean rank (lower is better)
-    sorted_results = sorted(comprehensive_results.items(), key=lambda x: x[1]['mean_rank'])
+    sorted_results = sorted(comprehensive_results.items(),
+                            key=lambda x: x[1]['mean_rank'])
 
-    print(f"\nComprehensive Strategy Stability Results (all year lengths, sorted by mean rank):")
+    print(f"\nComprehensive Strategy Stability Results"
+          f" (all year lengths, sorted by mean rank):")
     print("=" * 130)
-    print(f"{'Strategy Name':<50} {'Mean':<6} {'StDev':<6} {'Min':<4} {'Max':<4} {'Total':<6}")
+    print(f"{'Strategy Name':<50} {'Mean':<6} {'StDev':<6} {'Min':<4}"
+          f" {'Max':<4} {'Total':<6}")
     print("-" * 130)
 
     for strategy_name, strategy_data in sorted_results:
@@ -1355,7 +1442,8 @@ def print_comprehensive_stability_results(comprehensive_results: Dict):
         max_rank = strategy_data['max_rank']
         total_tests = strategy_data['total_tests']
 
-        print(f"{strategy_name:<50} {mean_rank:<6.1f} {stdev_rank:<6.1f} {min_rank:<4} {max_rank:<4} {total_tests:<6}")
+        print(f"{strategy_name:<50} {mean_rank:<6.1f} {stdev_rank:<6.1f}"
+              f" {min_rank:<4} {max_rank:<4} {total_tests:<6}")
 
     print("-" * 130)
     print(f"Total strategies analyzed: {len(sorted_results)}")
@@ -1413,7 +1501,8 @@ def main():
         '--skip', '-x',
         action='append',
         choices=['1m', '3m', '6m', '1y', '2y'],
-        help='Skip specific treasury terms (can be used multiple times, e.g., --skip 1m --skip 3m)'
+        help='Skip specific treasury terms (can be used multiple times,'
+             ' e.g., --skip 1m --skip 3m)'
     )
     args = parser.parse_args()
 
@@ -1469,6 +1558,12 @@ def main():
     print("\nRunning backtest...")
     results = backtest_strategies(data, skip_terms=args.skip)
 
+    # Get the common data range used by backtest_strategies
+    filtered_periods = get_filtered_treasury_periods(args.skip)
+    available_periods = [period for period in filtered_periods
+                        if check_data_availability(data, period)]
+    common_data = find_common_data_range(data, available_periods) if available_periods else data
+
     # Find and display best strategy
     best_strategy_name, best_strategy_data = find_best_strategy(results)
 
@@ -1504,7 +1599,7 @@ def main():
         # Show detailed borrowing history for the best strategy
         try:
             best_result = run_single_strategy(
-                data, best_strategy_data['short_term'],
+                common_data, best_strategy_data['short_term'],
                 best_strategy_data['long_term'],
                 best_strategy_data['pick_threshold'],
                 best_strategy_data.get('pick_method', 'use_threshold'),
@@ -1531,8 +1626,9 @@ def main():
 
             for strategy_name, strategy_data in results.items():
                 strategy_id = strategy_data.get('strategy_id', 'N/A')
-                write_strategy_history(data, strategy_name, strategy_data,
-                                       strategy_id, args.skip_records, args.skip)
+                write_strategy_history(common_data, strategy_name, strategy_data,
+                                       strategy_id, 0, args.skip,
+                                       suppress_warnings=True)
         else:
             # Generate history for specific strategy ID
             strategy_name, strategy_data = find_strategy_by_id(
@@ -1544,8 +1640,9 @@ def main():
                 print(f"Strategy: {strategy_name}")
                 print("=" * 50)
 
-                write_strategy_history(data, strategy_name, strategy_data,
-                                       str(args.strategy_id), args.skip_records, args.skip)
+                write_strategy_history(common_data, strategy_name, strategy_data,
+                                       str(args.strategy_id), 0, args.skip,
+                                       suppress_warnings=True)
             else:
                 print(f"Strategy ID {args.strategy_id} not found."
                       f" Available strategy IDs:")
@@ -1560,15 +1657,18 @@ def main():
 
     # Test pick_high and pick_low
     for pick_method in ["pick_high", "pick_low"]:
-        result = run_single_strategy(data, '1 Mo', '3 Mo', 0.0, pick_method, skip_terms=args.skip, suppress_warnings=True)
+        result = run_single_strategy(common_data, '1 Mo', '3 Mo', 0.0, pick_method,
+                                     skip_terms=args.skip,
+                                     suppress_warnings=True)
         if result:
             print_strategy_summary(result, pick_method)
 
     # Test use_threshold with different thresholds
     print("\nThreshold-based strategies:")
     for threshold in [0.0, 0.1, 0.2, 0.3, 0.5]:
-        result = run_single_strategy(data, '1 Mo', '3 Mo', threshold,
-                                     "use_threshold", skip_terms=args.skip, suppress_warnings=True)
+        result = run_single_strategy(common_data, '1 Mo', '3 Mo', threshold,
+                                     "use_threshold", skip_terms=args.skip,
+                                     suppress_warnings=True)
         if result:
             print_strategy_summary(
                 result, f"use_threshold (threshold {threshold})")
@@ -1576,25 +1676,31 @@ def main():
     # Test fixed strategies
     print("\nFixed strategies:")
     for term in TREASURY_PERIODS:
-        result = run_single_strategy(data, '1 Mo', '3 Mo', 0.0,
-                                     'fixed', fixed_term=term, skip_terms=args.skip, suppress_warnings=True)
+        result = run_single_strategy(common_data, '1 Mo', '3 Mo', 0.0,
+                                     'fixed', fixed_term=term,
+                                     skip_terms=args.skip,
+                                     suppress_warnings=True)
         if result:
             print_strategy_summary(result, f"fixed_{term}")
 
     # Test strategy stability if requested
     if args.stability_test:
         print("\n" + "=" * 50)
-        print(f"Testing Strategy Stability ({args.stability_years}-year rolling periods)...")
+        print(f"Testing Strategy Stability"
+              f" ({args.stability_years}-year rolling periods)...")
         print("=" * 50)
-        stability_results = test_strategy_stability(data, n_years=args.stability_years, skip_terms=args.skip)
+        stability_results = test_strategy_stability(
+            data, n_years=args.stability_years, skip_terms=args.skip)
         print_stability_results(stability_results)
 
     # Test comprehensive stability if requested
     if args.comprehensive_stability:
         print("\n" + "=" * 50)
-        print("Testing Comprehensive Strategy Stability across all year lengths...")
+        print("Testing Comprehensive Strategy Stability"
+              " across all year lengths...")
         print("=" * 50)
-        comprehensive_results = test_comprehensive_stability(data, skip_terms=args.skip)
+        comprehensive_results = test_comprehensive_stability(
+            data, skip_terms=args.skip)
         print_comprehensive_stability_results(comprehensive_results)
 
 if __name__ == "__main__":
