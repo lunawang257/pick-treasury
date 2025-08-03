@@ -50,6 +50,14 @@ Common Usage Patterns
 
    python pick-treasury.py -c --no-overlap --use-new-data
 
+   You can also add --weighted to calculate weighted average and standard
+   deviation, where the weight is the number of years of each test period.
+   This gives more importance to longer test periods:
+
+   python pick-treasury.py -c --weighted
+   python pick-treasury.py -c --no-overlap --weighted
+   python pick-treasury.py -c --no-overlap --use-new-data --weighted
+
 4. Run Stability Test with Different Period Lengths
    -----------------------------------------------
    You can vary the rolling period length:
@@ -77,6 +85,7 @@ Common Usage Patterns
    python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability
    python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability --no-overlap
    python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability --no-overlap --use-new-data
+   python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability --weighted
 
 Command Line Arguments
 =====================
@@ -101,6 +110,10 @@ Command Line Arguments
 --use-new-data
     When using --no-overlap, skip old data and use latest data
     (default: uses earliest data)
+
+--weighted
+    Calculate weighted average and stdev for comprehensive stability test
+    (weight is the number of years of each test period)
 
 --skip, -x TERM
     Skip specific treasury terms (can be used multiple times, e.g., --skip 1m --skip 3m)

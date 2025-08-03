@@ -1311,7 +1311,8 @@ def print_stability_results(stability_results: Dict):
 def test_comprehensive_stability(data: List[Dict],
                                  skip_terms: List[str] = None,
                                  no_overlap: bool = False,
-                                 use_new_data: bool = False) -> Dict:
+                                 use_new_data: bool = False,
+                                 weighted: bool = False) -> Dict:
     """
     Test strategy stability across all possible year lengths and aggregate
     results.
@@ -1321,14 +1322,17 @@ def test_comprehensive_stability(data: List[Dict],
         skip_terms: List of terms to skip (e.g., ['1m', '3m'])
         no_overlap: If True, use non-overlapping periods instead of rolling periods
         use_new_data: If True and no_overlap is True, skip old data and use latest data
+        weighted: If True, calculate weighted average and stdev using year length as weight
 
     Returns:
         Dict: Comprehensive stability results with aggregated statistics
     """
     period_type = "non-overlapping" if no_overlap else "rolling"
     data_strategy = "latest" if use_new_data and no_overlap else "earliest"
+    weight_type = "weighted" if weighted else "unweighted"
     print(f"Running comprehensive stability test across all possible"
-          f" year lengths using {period_type} periods with {data_strategy} data...")
+          f" year lengths using {period_type} periods with {data_strategy} data"
+          f" ({weight_type} calculations)...")
 
     # Calculate maximum possible years (need at least 12 months per period)
     max_years = len(data) // 12
@@ -1337,6 +1341,7 @@ def test_comprehensive_stability(data: List[Dict],
 
     # Store all ranks for each strategy across all year lengths
     strategy_all_ranks = {}
+    strategy_all_weights = {}
 
     for n_years in range(4, max_years + 1):
         print(f"\nTesting {n_years}-year periods...")
@@ -1359,7 +1364,7 @@ def test_comprehensive_stability(data: List[Dict],
         period_type_str = "non-overlapping" if no_overlap else "rolling"
         print(f"  Running {num_periods} {period_type_str} {n_years}-year periods...")
 
-        # Store ranks for this year length
+                # Store ranks for this year length
         strategy_ranks = {}
 
         for period_idx in range(num_periods):
@@ -1414,9 +1419,12 @@ def test_comprehensive_stability(data: List[Dict],
 
             if strategy_name not in strategy_all_ranks:
                 strategy_all_ranks[strategy_name] = []
+                strategy_all_weights[strategy_name] = []
 
             # Add all ranks from this year length to the overall collection
             strategy_all_ranks[strategy_name].extend(ranks)
+            # Add weights (number of years) for each rank
+            strategy_all_weights[strategy_name].extend([n_years] * len(ranks))
 
     # Calculate comprehensive statistics for each strategy
     comprehensive_results = {}
@@ -1425,8 +1433,26 @@ def test_comprehensive_stability(data: List[Dict],
         if len(all_ranks) < 10:  # Require at least 10 total periods
             continue
 
-        mean_rank = statistics.mean(all_ranks)
-        stdev_rank = statistics.stdev(all_ranks) if len(all_ranks) > 1 else 0
+        if weighted:
+            # Calculate weighted statistics
+            weights = strategy_all_weights[strategy_name]
+
+            # Weighted mean
+            weighted_sum = sum(rank * weight for rank, weight in zip(all_ranks, weights))
+            total_weight = sum(weights)
+            mean_rank = weighted_sum / total_weight if total_weight > 0 else 0
+
+            # Weighted standard deviation
+            if len(all_ranks) > 1:
+                weighted_variance = sum(weight * (rank - mean_rank) ** 2
+                                     for rank, weight in zip(all_ranks, weights))
+                stdev_rank = (weighted_variance / total_weight) ** 0.5
+            else:
+                stdev_rank = 0
+        else:
+            # Calculate unweighted statistics
+            mean_rank = statistics.mean(all_ranks)
+            stdev_rank = statistics.stdev(all_ranks) if len(all_ranks) > 1 else 0
 
         comprehensive_results[strategy_name] = {
             'name': strategy_name,
@@ -1533,6 +1559,11 @@ def main():
         '--use-new-data',
         action='store_true',
         help='When using --no-overlap, skip old data and use latest data'
+    )
+    parser.add_argument(
+        '--weighted',
+        action='store_true',
+        help='Calculate weighted average and stdev for comprehensive stability test'
     )
     parser.add_argument(
         '--skip', '-x',
@@ -1735,11 +1766,14 @@ def main():
         print("\n" + "=" * 50)
         period_type = "non-overlapping" if args.no_overlap else "rolling"
         data_strategy = "latest" if args.use_new_data and args.no_overlap else "earliest"
+        weight_type = "weighted" if args.weighted else "unweighted"
         print(f"Testing Comprehensive Strategy Stability"
-              f" across all year lengths using {period_type} periods with {data_strategy} data...")
+              f" across all year lengths using {period_type} periods with {data_strategy} data"
+              f" ({weight_type} calculations)...")
         print("=" * 50)
         comprehensive_results = test_comprehensive_stability(
-            data, skip_terms=args.skip, no_overlap=args.no_overlap, use_new_data=args.use_new_data)
+            data, skip_terms=args.skip, no_overlap=args.no_overlap,
+            use_new_data=args.use_new_data, weighted=args.weighted)
         print_comprehensive_stability_results(comprehensive_results)
 
 if __name__ == "__main__":
