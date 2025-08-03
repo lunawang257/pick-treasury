@@ -33,6 +33,15 @@ Common Usage Patterns
    This tests each strategy across all year lengths from 4 to maximum possible,
    aggregates all results, and provides overall stability rankings.
 
+   By default, the test uses rolling (overlapping) periods. To use non-overlapping
+   periods instead, add the --no-overlap flag:
+
+   python pick-treasury.py -c --no-overlap
+
+   Non-overlapping periods provide independent test periods (e.g., 1990-1993,
+   1994-1997, 1998-2001, etc.) while rolling periods provide more test periods
+   but with overlapping data.
+
 4. Run Stability Test with Different Period Lengths
    -----------------------------------------------
    You can vary the rolling period length:
@@ -58,6 +67,7 @@ Common Usage Patterns
 
    python pick-treasury.py --skip 1m --skip 3m
    python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability
+   python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability --no-overlap
 
 Command Line Arguments
 =====================
@@ -74,6 +84,10 @@ Command Line Arguments
 
 -c, --comprehensive-stability
     Run comprehensive stability test across all possible year lengths
+
+--no-overlap
+    Use non-overlapping periods for comprehensive stability test
+    (default: uses rolling/overlapping periods)
 
 --skip, -x TERM
     Skip specific treasury terms (can be used multiple times, e.g., --skip 1m --skip 3m)

@@ -1309,7 +1309,8 @@ def print_stability_results(stability_results: Dict):
     print(f"Total strategies analyzed: {len(sorted_results)}")
 
 def test_comprehensive_stability(data: List[Dict],
-                                 skip_terms: List[str] = None) -> Dict:
+                                 skip_terms: List[str] = None,
+                                 no_overlap: bool = False) -> Dict:
     """
     Test strategy stability across all possible year lengths and aggregate
     results.
@@ -1317,12 +1318,14 @@ def test_comprehensive_stability(data: List[Dict],
     Args:
         data: List of dictionaries with treasury yield data
         skip_terms: List of terms to skip (e.g., ['1m', '3m'])
+        no_overlap: If True, use non-overlapping periods instead of rolling periods
 
     Returns:
         Dict: Comprehensive stability results with aggregated statistics
     """
-    print("Running comprehensive stability test across all possible"
-          " year lengths...")
+    period_type = "non-overlapping" if no_overlap else "rolling"
+    print(f"Running comprehensive stability test across all possible"
+          f" year lengths using {period_type} periods...")
 
     # Calculate maximum possible years (need at least 12 months per period)
     max_years = len(data) // 12
@@ -1335,24 +1338,38 @@ def test_comprehensive_stability(data: List[Dict],
     for n_years in range(4, max_years + 1):
         print(f"\nTesting {n_years}-year periods...")
 
-        # Calculate number of rolling periods for this year length
+        # Calculate number of periods for this year length
         months_per_period = n_years * 12
-        num_periods = len(data) - months_per_period + 1
+
+        if no_overlap:
+            # Use non-overlapping periods
+            num_periods = len(data) // months_per_period
+        else:
+            # Use rolling periods (original behavior)
+            num_periods = len(data) - months_per_period + 1
 
         if num_periods < 2:
             print(f"  Skipping {n_years}-year periods"
                   f" (only {num_periods} periods available)")
             continue
 
-        print(f"  Running {num_periods} rolling {n_years}-year periods...")
+        period_type_str = "non-overlapping" if no_overlap else "rolling"
+        print(f"  Running {num_periods} {period_type_str} {n_years}-year periods...")
 
         # Store ranks for this year length
         strategy_ranks = {}
 
         for period_idx in range(num_periods):
             # Extract data for this period
-            start_idx = period_idx
-            end_idx = period_idx + months_per_period
+            if no_overlap:
+                # Non-overlapping periods: each period starts where the previous ended
+                start_idx = period_idx * months_per_period
+                end_idx = start_idx + months_per_period
+            else:
+                # Rolling periods: each period starts one month after the previous
+                start_idx = period_idx
+                end_idx = period_idx + months_per_period
+
             period_data = data[start_idx:end_idx]
 
             # Run backtest for this period
@@ -1496,6 +1513,11 @@ def main():
         '--comprehensive-stability', '-c',
         action='store_true',
         help='Run comprehensive stability test across all possible year lengths'
+    )
+    parser.add_argument(
+        '--no-overlap',
+        action='store_true',
+        help='Use non-overlapping periods for comprehensive stability test'
     )
     parser.add_argument(
         '--skip', '-x',
@@ -1696,11 +1718,12 @@ def main():
     # Test comprehensive stability if requested
     if args.comprehensive_stability:
         print("\n" + "=" * 50)
-        print("Testing Comprehensive Strategy Stability"
-              " across all year lengths...")
+        period_type = "non-overlapping" if args.no_overlap else "rolling"
+        print(f"Testing Comprehensive Strategy Stability"
+              f" across all year lengths using {period_type} periods...")
         print("=" * 50)
         comprehensive_results = test_comprehensive_stability(
-            data, skip_terms=args.skip)
+            data, skip_terms=args.skip, no_overlap=args.no_overlap)
         print_comprehensive_stability_results(comprehensive_results)
 
 if __name__ == "__main__":
