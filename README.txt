@@ -42,6 +42,14 @@ Common Usage Patterns
    1994-1997, 1998-2001, etc.) while rolling periods provide more test periods
    but with overlapping data.
 
+   When using --no-overlap, you can also add --use-new-data to skip old data
+   and use the latest data instead. For example, if there are 35 years of data
+   and testing 10-year periods, the default would use the first 30 years
+   (1990-2019), but with --use-new-data it would use the latest 30 years
+   (1995-2024):
+
+   python pick-treasury.py -c --no-overlap --use-new-data
+
 4. Run Stability Test with Different Period Lengths
    -----------------------------------------------
    You can vary the rolling period length:
@@ -68,6 +76,7 @@ Common Usage Patterns
    python pick-treasury.py --skip 1m --skip 3m
    python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability
    python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability --no-overlap
+   python pick-treasury.py --skip 1m --skip 3m --comprehensive-stability --no-overlap --use-new-data
 
 Command Line Arguments
 =====================
@@ -88,6 +97,10 @@ Command Line Arguments
 --no-overlap
     Use non-overlapping periods for comprehensive stability test
     (default: uses rolling/overlapping periods)
+
+--use-new-data
+    When using --no-overlap, skip old data and use latest data
+    (default: uses earliest data)
 
 --skip, -x TERM
     Skip specific treasury terms (can be used multiple times, e.g., --skip 1m --skip 3m)

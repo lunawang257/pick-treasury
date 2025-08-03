@@ -1310,7 +1310,8 @@ def print_stability_results(stability_results: Dict):
 
 def test_comprehensive_stability(data: List[Dict],
                                  skip_terms: List[str] = None,
-                                 no_overlap: bool = False) -> Dict:
+                                 no_overlap: bool = False,
+                                 use_new_data: bool = False) -> Dict:
     """
     Test strategy stability across all possible year lengths and aggregate
     results.
@@ -1319,13 +1320,15 @@ def test_comprehensive_stability(data: List[Dict],
         data: List of dictionaries with treasury yield data
         skip_terms: List of terms to skip (e.g., ['1m', '3m'])
         no_overlap: If True, use non-overlapping periods instead of rolling periods
+        use_new_data: If True and no_overlap is True, skip old data and use latest data
 
     Returns:
         Dict: Comprehensive stability results with aggregated statistics
     """
     period_type = "non-overlapping" if no_overlap else "rolling"
+    data_strategy = "latest" if use_new_data and no_overlap else "earliest"
     print(f"Running comprehensive stability test across all possible"
-          f" year lengths using {period_type} periods...")
+          f" year lengths using {period_type} periods with {data_strategy} data...")
 
     # Calculate maximum possible years (need at least 12 months per period)
     max_years = len(data) // 12
@@ -1362,9 +1365,16 @@ def test_comprehensive_stability(data: List[Dict],
         for period_idx in range(num_periods):
             # Extract data for this period
             if no_overlap:
-                # Non-overlapping periods: each period starts where the previous ended
-                start_idx = period_idx * months_per_period
-                end_idx = start_idx + months_per_period
+                if use_new_data:
+                    # Use latest data: skip old data and use the most recent periods
+                    total_used_months = num_periods * months_per_period
+                    start_offset = len(data) - total_used_months
+                    start_idx = start_offset + (period_idx * months_per_period)
+                    end_idx = start_idx + months_per_period
+                else:
+                    # Use earliest data: start from the beginning
+                    start_idx = period_idx * months_per_period
+                    end_idx = start_idx + months_per_period
             else:
                 # Rolling periods: each period starts one month after the previous
                 start_idx = period_idx
@@ -1518,6 +1528,11 @@ def main():
         '--no-overlap',
         action='store_true',
         help='Use non-overlapping periods for comprehensive stability test'
+    )
+    parser.add_argument(
+        '--use-new-data',
+        action='store_true',
+        help='When using --no-overlap, skip old data and use latest data'
     )
     parser.add_argument(
         '--skip', '-x',
@@ -1719,11 +1734,12 @@ def main():
     if args.comprehensive_stability:
         print("\n" + "=" * 50)
         period_type = "non-overlapping" if args.no_overlap else "rolling"
+        data_strategy = "latest" if args.use_new_data and args.no_overlap else "earliest"
         print(f"Testing Comprehensive Strategy Stability"
-              f" across all year lengths using {period_type} periods...")
+              f" across all year lengths using {period_type} periods with {data_strategy} data...")
         print("=" * 50)
         comprehensive_results = test_comprehensive_stability(
-            data, skip_terms=args.skip, no_overlap=args.no_overlap)
+            data, skip_terms=args.skip, no_overlap=args.no_overlap, use_new_data=args.use_new_data)
         print_comprehensive_stability_results(comprehensive_results)
 
 if __name__ == "__main__":
