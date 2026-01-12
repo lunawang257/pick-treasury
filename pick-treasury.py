@@ -12,6 +12,50 @@ RATE_SLIPPAGE = 0.3  # Default rate slippage in percentage points
 TREASURY_PERIODS = ['1 Mo', '3 Mo', '6 Mo', '1 Yr', '2 Yr']
 
 
+def bey_to_ear(bey: float, days: int) -> float:
+    """
+    Convert Bond Equivalent Yield (BEY) to Effective Annual Rate (EAR).
+
+    For a box with Face value F and Price P expiring in D days:
+        BEY = (F - P) / P * 365 / D
+        EAR = (F / P) ** (365 / D) - 1
+
+    Args:
+        bey: Bond Equivalent Yield (as a decimal, e.g., 0.05 for 5%)
+        days: Number of days until expiration
+
+    Returns:
+        float: Effective Annual Rate (as a decimal)
+    """
+    # From BEY, derive F/P ratio: F/P = 1 + BEY * D / 365
+    f_over_p = 1 + bey * days / 365
+    # Compute EAR from F/P ratio
+    ear = f_over_p ** (365 / days) - 1
+    return ear
+
+
+def ear_to_bey(ear: float, days: int) -> float:
+    """
+    Convert Effective Annual Rate (EAR) to Bond Equivalent Yield (BEY).
+
+    For a box with Face value F and Price P expiring in D days:
+        EAR = (F / P) ** (365 / D) - 1
+        BEY = (F - P) / P * 365 / D
+
+    Args:
+        ear: Effective Annual Rate (as a decimal, e.g., 0.05 for 5%)
+        days: Number of days until expiration
+
+    Returns:
+        float: Bond Equivalent Yield (as a decimal)
+    """
+    # From EAR, derive F/P ratio: F/P = (EAR + 1) ** (D / 365)
+    f_over_p = (ear + 1) ** (days / 365)
+    # Compute BEY from F/P ratio
+    bey = (f_over_p - 1) * 365 / days
+    return bey
+
+
 def is_third_friday(date_str: str) -> bool:
     """
     Check if a given date is the 3rd Friday of the month.
@@ -233,6 +277,15 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
         '2 Yr': 24
     }
 
+    # Define borrowing durations in days for BEY/EAR conversion
+    duration_days = {
+        '1 Mo': 30,
+        '3 Mo': 91,
+        '6 Mo': 182,
+        '1 Yr': 365,
+        '2 Yr': 730
+    }
+
     # Initialize compound interest simulation
     current_amount = initial_amount
     total_interest_paid = 0.0
@@ -253,8 +306,20 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
     while i < len(data):
         row = data[i]
         current_date = row['Date']
-        short_rate = row[short_term]
-        long_rate = row[long_term]
+        short_rate = row[short_term]  # BEY in percentage
+        long_rate = row[long_term]    # BEY in percentage
+
+        # Get days for each term (for BEY/EAR conversion)
+        short_days = duration_days[short_term]
+        long_days = duration_days[long_term]
+
+        # Convert BEY to EAR for comparison (rates are in percentage)
+        short_rate_ear = None
+        long_rate_ear = None
+        if short_rate is not None:
+            short_rate_ear = bey_to_ear(short_rate / 100, short_days)
+        if long_rate is not None:
+            long_rate_ear = bey_to_ear(long_rate / 100, long_days)
 
         # Get skipped periods for comparison
         skipped_periods = convert_skip_to_periods(skip_terms) \
@@ -293,10 +358,12 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
             if fixed_term == long_term:
                 strategy = long_term
                 chosen_rate = long_rate
+                chosen_days = long_days
                 duration = duration_months[long_term]
             elif fixed_term == short_term:
                 strategy = short_term
                 chosen_rate = short_rate
+                chosen_days = short_days
                 duration = duration_months[short_term]
             else:
                 # If fixed_term is not one of the two terms being compared,
@@ -304,59 +371,69 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
                 if fixed_term in row:
                     strategy = fixed_term
                     chosen_rate = row[fixed_term]
+                    chosen_days = duration_days[fixed_term]
                     duration = duration_months[fixed_term]
                 else:
                     # Fall back to short term if fixed term not available
                     strategy = short_term
                     chosen_rate = short_rate
+                    chosen_days = short_days
                     duration = duration_months[short_term]
         elif pick_method == "pick_high":
-            # Always use the higher rate
-            use_long_term = long_rate > short_rate
+            # Always use the higher rate (compare EAR values)
+            use_long_term = long_rate_ear > short_rate_ear
             if use_long_term:
                 strategy = long_term
                 chosen_rate = long_rate
+                chosen_days = long_days
                 duration = duration_months[long_term]
             else:
                 strategy = short_term
                 chosen_rate = short_rate
+                chosen_days = short_days
                 duration = duration_months[short_term]
         elif pick_method == "pick_low":
-            # Always use the lower rate
-            use_long_term = long_rate < short_rate
+            # Always use the lower rate (compare EAR values)
+            use_long_term = long_rate_ear < short_rate_ear
             if use_long_term:
                 strategy = long_term
                 chosen_rate = long_rate
+                chosen_days = long_days
                 duration = duration_months[long_term]
             else:
                 strategy = short_term
                 chosen_rate = short_rate
+                chosen_days = short_days
                 duration = duration_months[short_term]
         else:  # use_threshold
-            if short_rate == 0:
+            if short_rate_ear == 0:
                 use_long_term = True
             else:
-                # Use the original threshold-based strategy
-                use_long_term = long_rate / short_rate > (1 + pick_threshold)
+                # Use the threshold-based strategy (compare EAR values)
+                use_long_term = long_rate_ear / short_rate_ear > (1 + pick_threshold)
 
             if use_long_term:
                 strategy = long_term
                 chosen_rate = long_rate
+                chosen_days = long_days
                 duration = duration_months[long_term]
             else:
                 strategy = short_term
                 chosen_rate = short_rate
+                chosen_days = short_days
                 duration = duration_months[short_term]
 
         # Add rate slippage to get actual borrowing cost
-        actual_rate = chosen_rate + rate_slippage
+        # 1. Convert chosen_rate (BEY in %) to EAR (decimal)
+        chosen_rate_ear = bey_to_ear(chosen_rate / 100, chosen_days)
+        # 2. Add rate_slippage (in percentage points) to get Box's EAR
+        actual_rate_ear = chosen_rate_ear + rate_slippage / 100
+        # 3. Convert Box's EAR back to BEY (in %) for price calculation
+        actual_rate = ear_to_bey(actual_rate_ear, chosen_days) * 100
 
         # Calculate interest for this borrowing period
-        # Convert annual rate to monthly rate, then compound for the duration
-        monthly_rate = actual_rate / 12 / 100
-        period_interest = (
-            current_amount * monthly_rate * duration  # Prepaid
-        )
+        # BEY is an annualized simple rate, so: Interest = P × BEY × (days/365)
+        period_interest = current_amount * (actual_rate / 100) * (chosen_days / 365)
 
         # Update compound interest simulation
         total_interest_paid += period_interest
