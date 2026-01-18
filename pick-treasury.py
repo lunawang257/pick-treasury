@@ -8,7 +8,13 @@ from typing import Tuple, List, Dict
 import statistics
 
 # Constants
-RATE_SLIPPAGE = 0.3  # Default rate slippage in percentage points
+RATE_SLIPPAGE = {
+    '1 Mo': 1.13,
+    '3 Mo': 0.63,
+    '6 Mo': 0.55,
+    '1 Yr': 0.45,
+    '2 Yr': 0.91
+}  # Rate slippage in percentage points, by period
 TREASURY_PERIODS = ['1 Mo', '3 Mo', '6 Mo', '1 Yr', '2 Yr']
 
 
@@ -228,7 +234,7 @@ def load_and_filter_data(csv_file: str) -> List[Dict]:
         return []
 
 def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
-              pick_threshold: float, rate_slippage: float = RATE_SLIPPAGE,
+              pick_threshold: float, rate_slippage: Dict[str, float] = RATE_SLIPPAGE,
               initial_amount: float = 1000000.0,
               pick_method: str = "use_threshold",
               fixed_term: str = None, skip_terms: List[str] = None,
@@ -242,7 +248,7 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
         short_term: Shorter term treasury period (e.g., '1 Mo', '3 Mo')
         long_term: Longer term treasury period (e.g., '3 Mo', '6 Mo')
         pick_threshold: Threshold for choosing long term vs short term
-        rate_slippage: Additional borrowing cost in percentage points
+        rate_slippage: Dict mapping period to slippage in percentage points
         initial_amount: Initial amount to borrow (default $1M)
         pick_method: Method for choosing rates ("pick_high", "pick_low",
           "use_threshold")
@@ -427,7 +433,7 @@ def CmpBorrow(data: List[Dict], short_term: str, long_term: str,
         # 1. Convert chosen_rate (BEY in %) to EAR (decimal)
         chosen_rate_ear = bey_to_ear(chosen_rate / 100, chosen_days)
         # 2. Add rate_slippage (in percentage points) to get Box's EAR
-        actual_rate_ear = chosen_rate_ear + rate_slippage / 100
+        actual_rate_ear = chosen_rate_ear + rate_slippage[strategy] / 100
         # 3. Convert Box's EAR back to BEY (in %) for price calculation
         actual_rate = ear_to_bey(actual_rate_ear, chosen_days) * 100
 
